@@ -12,6 +12,8 @@
 //!   with adaptive weight selection.
 //! - **Dispatching**: Generic priority rule composition engine for
 //!   multi-rule item ranking.
+//! - **CP (Constraint Programming)**: Domain-agnostic modeling layer for
+//!   constrained optimization with interval, integer, and boolean variables.
 //!
 //! # Architecture
 //!
@@ -22,6 +24,7 @@
 
 pub mod alns;
 pub mod brkga;
+pub mod cp;
 pub mod dispatching;
 pub mod ga;
 pub mod sa;
