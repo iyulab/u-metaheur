@@ -1,0 +1,18 @@
+[package]
+name = "u-metaheur"
+version = "0.1.0"
+edition = "2021"
+authors = ["iyulab"]
+license = "MIT"
+description = "Domain-agnostic metaheuristic optimization framework: GA, BRKGA, SA, ALNS."
+repository = "https://github.com/iyulab/u-metaheur"
+keywords = ["optimization", "genetic-algorithm", "metaheuristic", "evolutionary"]
+categories = ["algorithms", "science"]
+
+[dependencies]
+u-optim = { path = "../u-optim" }
+rand = "0.9"
+rayon = "1.10"
+
+[dev-dependencies]
+proptest = "1.4"
