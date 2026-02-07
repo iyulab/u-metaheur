@@ -8,6 +8,10 @@
 //!   only a decoder; all evolutionary mechanics are handled generically.
 //! - **Simulated Annealing (SA)**: Single-solution trajectory optimization
 //!   with pluggable cooling schedules.
+//! - **ALNS**: Adaptive Large Neighborhood Search — destroy/repair operators
+//!   with adaptive weight selection.
+//! - **Dispatching**: Generic priority rule composition engine for
+//!   multi-rule item ranking.
 //!
 //! # Architecture
 //!
@@ -16,6 +20,8 @@
 //! domain-specific concepts — scheduling, nesting, routing, etc. are
 //! all defined by consumers at higher layers.
 
+pub mod alns;
 pub mod brkga;
+pub mod dispatching;
 pub mod ga;
 pub mod sa;
