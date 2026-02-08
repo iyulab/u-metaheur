@@ -16,3 +16,8 @@ rayon = "1.10"
 
 [dev-dependencies]
 proptest = "1.4"
+criterion = "0.5"
+
+[[bench]]
+name = "metaheur_bench"
+harness = false
