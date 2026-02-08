@@ -312,12 +312,9 @@ mod tests {
             .with_iterations_per_temperature(100)
             .with_seed(42);
 
-        let cancel = Arc::new(AtomicBool::new(false));
-        let cancel_clone = cancel.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(10));
-            cancel_clone.store(true, Ordering::Relaxed);
-        });
+        // Set cancel flag before running — ensures deterministic cancellation
+        // regardless of how fast the solver completes.
+        let cancel = Arc::new(AtomicBool::new(true));
 
         let result = SaRunner::run_with_cancel(&problem, &config, Some(cancel));
         assert!(result.cancelled);
