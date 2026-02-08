@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 /// Status of the solver after execution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SolverStatus {
     /// Proven optimal solution found.
     Optimal,
@@ -22,6 +23,7 @@ pub enum SolverStatus {
 
 /// Solution for an interval variable.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IntervalSolution {
     /// Assigned start time.
     pub start: i64,
@@ -35,6 +37,7 @@ pub struct IntervalSolution {
 
 /// Solution from a CP solver.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CpSolution {
     /// Solver status.
     pub status: SolverStatus,
@@ -48,6 +51,8 @@ pub struct CpSolution {
     pub bool_vars: HashMap<String, bool>,
     /// Solve time in milliseconds.
     pub solve_time_ms: i64,
+    /// Number of search nodes explored.
+    pub num_nodes: u64,
 }
 
 impl CpSolution {
@@ -60,6 +65,7 @@ impl CpSolution {
             int_vars: HashMap::new(),
             bool_vars: HashMap::new(),
             solve_time_ms: 0,
+            num_nodes: 0,
         }
     }
 
@@ -81,6 +87,7 @@ impl CpSolution {
 
 /// Solver configuration.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SolverConfig {
     /// Maximum solve time in milliseconds.
     pub time_limit_ms: i64,
@@ -248,6 +255,7 @@ impl CpSolver for SimpleCpSolver {
             int_vars: HashMap::new(),
             bool_vars: HashMap::new(),
             solve_time_ms: start_time.elapsed().as_millis() as i64,
+            num_nodes: 0,
         };
 
         // Compute objective
