@@ -12,6 +12,23 @@ use std::sync::Arc;
 use std::time::Instant;
 use u_optim::random::create_rng;
 
+/// Per-generation population statistics.
+///
+/// Captures fitness distribution metrics for a single generation.
+#[derive(Debug, Clone, Default)]
+pub struct GenerationStats {
+    /// Generation number (0-based).
+    pub generation: usize,
+    /// Best (lowest) fitness in the population.
+    pub best_fitness: f64,
+    /// Worst (highest) fitness in the population.
+    pub worst_fitness: f64,
+    /// Mean fitness of the population.
+    pub mean_fitness: f64,
+    /// Standard deviation of fitness values.
+    pub std_dev: f64,
+}
+
 /// Result of a GA optimization run.
 ///
 /// Contains the best solution found, along with statistics about the
@@ -38,6 +55,11 @@ pub struct GaResult<I: Individual> {
 
     /// Best fitness at the end of each generation.
     pub fitness_history: Vec<f64>,
+
+    /// Per-generation population statistics (best, worst, mean, std_dev).
+    ///
+    /// Empty unless the run completes at least one generation.
+    pub generation_stats: Vec<GenerationStats>,
 }
 
 /// Executes the GA evolutionary loop.
@@ -95,7 +117,11 @@ impl GaRunner {
         let mut stagnation_counter = 0usize;
         let mut cancelled = false;
         let mut timed_out = false;
+        let mut generation_stats = Vec::with_capacity(config.max_generations);
         let start_time = Instant::now();
+
+        // Record initial population stats
+        generation_stats.push(compute_generation_stats(&population, 0));
 
         // 4. Evolutionary loop
         for gen in 0..config.max_generations {
@@ -197,6 +223,7 @@ impl GaRunner {
             }
 
             fitness_history.push(best.fitness().to_f64());
+            generation_stats.push(compute_generation_stats(&population, gen + 1));
 
             // Callback
             problem.on_generation(gen + 1, best.fitness());
@@ -211,6 +238,7 @@ impl GaRunner {
                     cancelled: false,
                     timed_out: false,
                     fitness_history,
+                    generation_stats,
                 };
             }
         }
@@ -227,6 +255,7 @@ impl GaRunner {
             cancelled,
             timed_out,
             fitness_history,
+            generation_stats,
         }
     }
 }
@@ -260,6 +289,32 @@ fn find_best<I: Individual>(population: &[I]) -> &I {
                 .unwrap_or(std::cmp::Ordering::Equal)
         })
         .expect("population must not be empty")
+}
+
+/// Computes population statistics for one generation.
+fn compute_generation_stats<I: Individual>(population: &[I], generation: usize) -> GenerationStats {
+    let fitnesses: Vec<f64> = population.iter().map(|ind| ind.fitness().to_f64()).collect();
+    let n = fitnesses.len() as f64;
+
+    let best = fitnesses
+        .iter()
+        .copied()
+        .fold(f64::INFINITY, f64::min);
+    let worst = fitnesses
+        .iter()
+        .copied()
+        .fold(f64::NEG_INFINITY, f64::max);
+    let mean = fitnesses.iter().sum::<f64>() / n;
+    let variance = fitnesses.iter().map(|&f| (f - mean).powi(2)).sum::<f64>() / n;
+    let std_dev = variance.sqrt();
+
+    GenerationStats {
+        generation,
+        best_fitness: best,
+        worst_fitness: worst,
+        mean_fitness: mean,
+        std_dev,
+    }
 }
 
 // ============================================================================
@@ -734,5 +789,79 @@ mod tests {
             result.best_fitness
         );
         assert!(!result.fitness_history.is_empty());
+    }
+
+    // ---- GenerationStats tests ----
+
+    #[test]
+    fn test_generation_stats_collected() {
+        let problem = OneMaxProblem { n: 10 };
+        let config = GaConfig::default()
+            .with_population_size(20)
+            .with_max_generations(30)
+            .with_stagnation_limit(0)
+            .with_seed(42)
+            .with_parallel(false);
+
+        let result = GaRunner::run(&problem, &config);
+
+        // Initial + 30 generations = 31 stats entries
+        assert_eq!(result.generation_stats.len(), 31);
+        assert_eq!(result.generation_stats[0].generation, 0);
+        assert_eq!(result.generation_stats[30].generation, 30);
+    }
+
+    #[test]
+    fn test_generation_stats_invariants() {
+        let problem = OneMaxProblem { n: 10 };
+        let config = GaConfig::default()
+            .with_population_size(20)
+            .with_max_generations(10)
+            .with_stagnation_limit(0)
+            .with_seed(42)
+            .with_parallel(false);
+
+        let result = GaRunner::run(&problem, &config);
+
+        for stats in &result.generation_stats {
+            // best <= mean <= worst
+            assert!(
+                stats.best_fitness <= stats.mean_fitness,
+                "gen {}: best {} > mean {}",
+                stats.generation,
+                stats.best_fitness,
+                stats.mean_fitness
+            );
+            assert!(
+                stats.mean_fitness <= stats.worst_fitness,
+                "gen {}: mean {} > worst {}",
+                stats.generation,
+                stats.mean_fitness,
+                stats.worst_fitness
+            );
+            // std_dev >= 0
+            assert!(
+                stats.std_dev >= 0.0,
+                "gen {}: std_dev {} < 0",
+                stats.generation,
+                stats.std_dev
+            );
+        }
+    }
+
+    #[test]
+    fn test_generation_stats_with_stagnation() {
+        let problem = OneMaxProblem { n: 5 };
+        let config = GaConfig::default()
+            .with_population_size(20)
+            .with_max_generations(1000)
+            .with_stagnation_limit(10)
+            .with_seed(42)
+            .with_parallel(false);
+
+        let result = GaRunner::run(&problem, &config);
+
+        // Stats count should match fitness_history
+        assert_eq!(result.generation_stats.len(), result.fitness_history.len());
     }
 }

@@ -35,6 +35,6 @@ mod selection;
 mod types;
 
 pub use config::GaConfig;
-pub use runner::{GaResult, GaRunner};
+pub use runner::{GaResult, GaRunner, GenerationStats};
 pub use selection::Selection;
 pub use types::{Fitness, GaProblem, Individual};
