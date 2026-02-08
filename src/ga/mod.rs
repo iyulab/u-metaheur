@@ -11,15 +11,21 @@
 //!
 //! # Key Types
 //!
-//! - [`GaConfig`]: Algorithm parameters (population size, selection, etc.)
+//! - [`GaConfig`]: Algorithm parameters (population size, selection, presets)
 //! - [`GaRunner`]: Executes the evolutionary loop
 //! - [`GaResult`]: Final optimization result with statistics
+//!
+//! # Submodules
+//!
+//! - [`operators`]: Generic permutation crossover (OX, PMX) and mutation operators
+//! - [`multi_objective`]: Pareto non-dominated sorting and crowding distance (NSGA-II utilities)
 //!
 //! # References
 //!
 //! - Holland (1975), *Adaptation in Natural and Artificial Systems*
 //! - Goldberg (1989), *Genetic Algorithms in Search, Optimization, and Machine Learning*
 //! - De Jong (2006), *Evolutionary Computation: A Unified Approach*
+//! - Deb et al. (2002), *A Fast and Elitist Multiobjective GA: NSGA-II*
 
 mod config;
 pub mod multi_objective;
