@@ -9,6 +9,7 @@ use rand::Rng;
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Instant;
 use u_optim::random::create_rng;
 
 /// Result of a GA optimization run.
@@ -31,6 +32,9 @@ pub struct GaResult<I: Individual> {
 
     /// Whether the run was cancelled externally.
     pub cancelled: bool,
+
+    /// Whether the run was stopped due to the wall-clock time limit.
+    pub timed_out: bool,
 
     /// Best fitness at the end of each generation.
     pub fitness_history: Vec<f64>,
@@ -90,6 +94,8 @@ impl GaRunner {
 
         let mut stagnation_counter = 0usize;
         let mut cancelled = false;
+        let mut timed_out = false;
+        let start_time = Instant::now();
 
         // 4. Evolutionary loop
         for gen in 0..config.max_generations {
@@ -97,6 +103,14 @@ impl GaRunner {
             if let Some(ref flag) = cancel {
                 if flag.load(Ordering::Relaxed) {
                     cancelled = true;
+                    break;
+                }
+            }
+
+            // Check time limit
+            if let Some(limit_ms) = config.time_limit_ms {
+                if start_time.elapsed().as_millis() as u64 >= limit_ms {
+                    timed_out = true;
                     break;
                 }
             }
@@ -180,6 +194,7 @@ impl GaRunner {
                     generations: gen + 1,
                     stagnated: true,
                     cancelled: false,
+                    timed_out: false,
                     fitness_history,
                 };
             }
@@ -188,13 +203,14 @@ impl GaRunner {
         GaResult {
             best_fitness: best.fitness(),
             best,
-            generations: if cancelled {
+            generations: if cancelled || timed_out {
                 fitness_history.len().saturating_sub(1)
             } else {
                 config.max_generations
             },
             stagnated: false,
             cancelled,
+            timed_out,
             fitness_history,
         }
     }
@@ -598,6 +614,69 @@ mod tests {
 
         // Should complete without error
         assert!(result.generations > 0);
+        assert!(!result.fitness_history.is_empty());
+    }
+
+    #[test]
+    fn test_timeout_stops_early() {
+        let problem = OneMaxProblem { n: 20 };
+        let config = GaConfig::default()
+            .with_population_size(50)
+            .with_max_generations(100_000) // Very high to ensure timeout triggers first
+            .with_stagnation_limit(0) // Disable stagnation
+            .with_time_limit_ms(50) // 50ms time limit
+            .with_seed(42)
+            .with_parallel(false);
+
+        let result = GaRunner::run(&problem, &config);
+
+        assert!(result.timed_out, "expected timed_out = true");
+        assert!(!result.cancelled);
+        assert!(!result.stagnated);
+        assert!(
+            result.generations < 100_000,
+            "should have stopped well before max_generations, got {}",
+            result.generations
+        );
+    }
+
+    #[test]
+    fn test_no_timeout_when_not_set() {
+        let problem = OneMaxProblem { n: 5 };
+        let config = GaConfig::default()
+            .with_population_size(10)
+            .with_max_generations(10)
+            .with_stagnation_limit(0)
+            .with_seed(42)
+            .with_parallel(false);
+        // time_limit_ms is None by default
+
+        let result = GaRunner::run(&problem, &config);
+
+        assert!(!result.timed_out);
+        assert_eq!(result.generations, 10);
+    }
+
+    #[test]
+    fn test_timed_out_result_has_valid_best() {
+        let problem = OneMaxProblem { n: 20 };
+        let config = GaConfig::default()
+            .with_population_size(50)
+            .with_max_generations(100_000)
+            .with_stagnation_limit(0)
+            .with_time_limit_ms(100)
+            .with_seed(42)
+            .with_parallel(false);
+
+        let result = GaRunner::run(&problem, &config);
+
+        assert!(result.timed_out);
+        // Best fitness should be valid (not infinity)
+        assert!(
+            result.best_fitness < 0.0,
+            "should have found at least some true bits, got {}",
+            result.best_fitness
+        );
         assert!(!result.fitness_history.is_empty());
     }
 }

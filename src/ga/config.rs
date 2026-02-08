@@ -70,6 +70,16 @@ pub struct GaConfig {
     ///
     /// `None` uses a random seed.
     pub seed: Option<u64>,
+
+    /// Optional wall-clock time limit in milliseconds.
+    ///
+    /// When set, the GA will stop after approximately this many milliseconds
+    /// have elapsed, returning the best solution found so far.
+    /// The check happens at the start of each generation, so the actual
+    /// runtime may slightly exceed this limit by one generation's worth of work.
+    ///
+    /// `None` disables time-based termination (the default).
+    pub time_limit_ms: Option<u64>,
 }
 
 impl Default for GaConfig {
@@ -84,6 +94,7 @@ impl Default for GaConfig {
             stagnation_limit: 50,
             parallel: true,
             seed: None,
+            time_limit_ms: None,
         }
     }
 }
@@ -143,6 +154,15 @@ impl GaConfig {
         self
     }
 
+    /// Sets the wall-clock time limit in milliseconds.
+    ///
+    /// The GA will stop after approximately this many milliseconds,
+    /// returning the best solution found so far.
+    pub fn with_time_limit_ms(mut self, ms: u64) -> Self {
+        self.time_limit_ms = Some(ms);
+        self
+    }
+
     /// Validates the configuration.
     ///
     /// Returns `Err` with a description if any parameter is invalid.
@@ -156,6 +176,9 @@ impl GaConfig {
         let elite_count = (self.population_size as f64 * self.elite_ratio) as usize;
         if elite_count >= self.population_size {
             return Err("elite_ratio too high: elites fill entire population".into());
+        }
+        if self.time_limit_ms == Some(0) {
+            return Err("time_limit_ms must be positive or None".into());
         }
         Ok(())
     }
@@ -177,6 +200,7 @@ mod tests {
         assert_eq!(config.stagnation_limit, 50);
         assert!(config.parallel);
         assert!(config.seed.is_none());
+        assert!(config.time_limit_ms.is_none());
     }
 
     #[test]
@@ -238,5 +262,23 @@ mod tests {
         assert!((config.elite_ratio - 1.0).abs() < 1e-10);
         assert!((config.crossover_rate - 0.0).abs() < 1e-10);
         assert!((config.mutation_rate - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_time_limit_builder() {
+        let config = GaConfig::default().with_time_limit_ms(5000);
+        assert_eq!(config.time_limit_ms, Some(5000));
+    }
+
+    #[test]
+    fn test_validate_zero_time_limit() {
+        let config = GaConfig::default().with_time_limit_ms(0);
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_positive_time_limit() {
+        let config = GaConfig::default().with_time_limit_ms(1);
+        assert!(config.validate().is_ok());
     }
 }
