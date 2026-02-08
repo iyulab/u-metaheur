@@ -236,6 +236,31 @@ impl GaConfig {
         }
     }
 
+    /// Automatically selects a preset based on problem size.
+    ///
+    /// - `item_count < 50` → [`fast()`](Self::fast)
+    /// - `50 ≤ item_count < 200` → [`balanced()`](Self::balanced)
+    /// - `item_count ≥ 200` → [`quality()`](Self::quality)
+    ///
+    /// The `item_count` is a domain-specific measure of problem size
+    /// (e.g., number of operations, genes, or decision variables).
+    pub fn auto_select(item_count: usize) -> Self {
+        if item_count < 50 {
+            Self::fast()
+        } else if item_count < 200 {
+            Self::balanced()
+        } else {
+            Self::quality()
+        }
+    }
+
+    /// Convenience builder for setting tournament size.
+    ///
+    /// Equivalent to `.with_selection(Selection::Tournament(k))`.
+    pub fn with_tournament_size(self, k: usize) -> Self {
+        self.with_selection(Selection::Tournament(k))
+    }
+
     /// Validates the configuration.
     ///
     /// Returns `Err` with a description if any parameter is invalid.
@@ -416,5 +441,60 @@ mod tests {
         assert_eq!(config.population_size, 75);
         assert_eq!(config.seed, Some(42));
         assert_eq!(config.time_limit_ms, Some(10_000));
+    }
+
+    // ---- auto_select ----
+
+    #[test]
+    fn test_auto_select_small() {
+        let config = GaConfig::auto_select(10);
+        assert_eq!(config.population_size, 50); // fast preset
+        assert_eq!(config.max_generations, 100);
+    }
+
+    #[test]
+    fn test_auto_select_medium() {
+        let config = GaConfig::auto_select(100);
+        assert_eq!(config.population_size, 100); // balanced preset
+        assert_eq!(config.max_generations, 300);
+    }
+
+    #[test]
+    fn test_auto_select_large() {
+        let config = GaConfig::auto_select(500);
+        assert_eq!(config.population_size, 150); // quality preset
+        assert_eq!(config.max_generations, 500);
+    }
+
+    #[test]
+    fn test_auto_select_boundaries() {
+        // Exactly 50 → balanced
+        let config = GaConfig::auto_select(50);
+        assert_eq!(config.population_size, 100);
+
+        // Exactly 200 → quality
+        let config = GaConfig::auto_select(200);
+        assert_eq!(config.population_size, 150);
+
+        // 49 → fast
+        let config = GaConfig::auto_select(49);
+        assert_eq!(config.population_size, 50);
+    }
+
+    // ---- with_tournament_size ----
+
+    #[test]
+    fn test_with_tournament_size() {
+        let config = GaConfig::default().with_tournament_size(5);
+        assert_eq!(config.selection, Selection::Tournament(5));
+    }
+
+    #[test]
+    fn test_with_tournament_size_chainable() {
+        let config = GaConfig::auto_select(100)
+            .with_tournament_size(4)
+            .with_seed(42);
+        assert_eq!(config.selection, Selection::Tournament(4));
+        assert_eq!(config.seed, Some(42));
     }
 }
