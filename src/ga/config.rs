@@ -58,10 +58,20 @@ pub struct GaConfig {
     /// Probability of applying mutation to an offspring (0.0–1.0).
     pub mutation_rate: f64,
 
-    /// Number of generations with no improvement before stopping.
+    /// Number of generations with no significant improvement before stopping.
     ///
     /// Set to 0 to disable stagnation-based termination.
     pub stagnation_limit: usize,
+
+    /// Minimum relative improvement to reset the stagnation counter.
+    ///
+    /// When a new best fitness is found, the improvement ratio is computed as
+    /// `|old - new| / |old|`. If this ratio is below `convergence_threshold`,
+    /// the generation is still counted as stagnating.
+    ///
+    /// Set to 0.0 to count any improvement (the default).
+    /// A typical value for production scheduling is 0.001 (0.1%).
+    pub convergence_threshold: f64,
 
     /// Whether to evaluate individuals in parallel using rayon.
     pub parallel: bool,
@@ -92,6 +102,7 @@ impl Default for GaConfig {
             crossover_rate: 0.9,
             mutation_rate: 0.1,
             stagnation_limit: 50,
+            convergence_threshold: 0.0,
             parallel: true,
             seed: None,
             time_limit_ms: None,
@@ -142,6 +153,17 @@ impl GaConfig {
         self
     }
 
+    /// Sets the convergence threshold.
+    ///
+    /// The stagnation counter is only reset when the relative improvement
+    /// exceeds this threshold: `|old - new| / |old| >= threshold`.
+    ///
+    /// Set to 0.0 to count any improvement (default).
+    pub fn with_convergence_threshold(mut self, threshold: f64) -> Self {
+        self.convergence_threshold = threshold.max(0.0);
+        self
+    }
+
     /// Enables or disables parallel evaluation.
     pub fn with_parallel(mut self, parallel: bool) -> Self {
         self.parallel = parallel;
@@ -163,6 +185,57 @@ impl GaConfig {
         self
     }
 
+    /// Preset for fast optimization: small population, few generations.
+    ///
+    /// Suitable for quick feasibility checks or real-time applications.
+    ///
+    /// - Population: 50, Generations: 100, Time limit: 10s
+    /// - Stagnation limit: 20, Convergence threshold: 0.001
+    pub fn fast() -> Self {
+        Self {
+            population_size: 50,
+            max_generations: 100,
+            stagnation_limit: 20,
+            convergence_threshold: 0.001,
+            time_limit_ms: Some(10_000),
+            ..Self::default()
+        }
+    }
+
+    /// Preset for balanced optimization: moderate population and generations.
+    ///
+    /// Good trade-off between solution quality and computation time.
+    ///
+    /// - Population: 100, Generations: 300, Time limit: 30s
+    /// - Stagnation limit: 50, Convergence threshold: 0.001
+    pub fn balanced() -> Self {
+        Self {
+            population_size: 100,
+            max_generations: 300,
+            stagnation_limit: 50,
+            convergence_threshold: 0.001,
+            time_limit_ms: Some(30_000),
+            ..Self::default()
+        }
+    }
+
+    /// Preset for quality optimization: large population, many generations.
+    ///
+    /// Maximizes solution quality at the cost of longer computation.
+    ///
+    /// - Population: 150, Generations: 500, Time limit: 60s
+    /// - Stagnation limit: 80, Convergence threshold: 0.0005
+    pub fn quality() -> Self {
+        Self {
+            population_size: 150,
+            max_generations: 500,
+            stagnation_limit: 80,
+            convergence_threshold: 0.0005,
+            time_limit_ms: Some(60_000),
+            ..Self::default()
+        }
+    }
+
     /// Validates the configuration.
     ///
     /// Returns `Err` with a description if any parameter is invalid.
@@ -176,6 +249,9 @@ impl GaConfig {
         let elite_count = (self.population_size as f64 * self.elite_ratio) as usize;
         if elite_count >= self.population_size {
             return Err("elite_ratio too high: elites fill entire population".into());
+        }
+        if self.convergence_threshold < 0.0 {
+            return Err("convergence_threshold must be non-negative".into());
         }
         if self.time_limit_ms == Some(0) {
             return Err("time_limit_ms must be positive or None".into());
@@ -198,6 +274,7 @@ mod tests {
         assert!((config.crossover_rate - 0.9).abs() < 1e-10);
         assert!((config.mutation_rate - 0.1).abs() < 1e-10);
         assert_eq!(config.stagnation_limit, 50);
+        assert!((config.convergence_threshold - 0.0).abs() < 1e-15);
         assert!(config.parallel);
         assert!(config.seed.is_none());
         assert!(config.time_limit_ms.is_none());
@@ -280,5 +357,64 @@ mod tests {
     fn test_validate_positive_time_limit() {
         let config = GaConfig::default().with_time_limit_ms(1);
         assert!(config.validate().is_ok());
+    }
+
+    // ---- Convergence threshold ----
+
+    #[test]
+    fn test_convergence_threshold_builder() {
+        let config = GaConfig::default().with_convergence_threshold(0.001);
+        assert!((config.convergence_threshold - 0.001).abs() < 1e-15);
+    }
+
+    #[test]
+    fn test_convergence_threshold_clamps_negative() {
+        let config = GaConfig::default().with_convergence_threshold(-0.5);
+        assert!((config.convergence_threshold - 0.0).abs() < 1e-15);
+    }
+
+    // ---- Presets ----
+
+    #[test]
+    fn test_preset_fast() {
+        let config = GaConfig::fast();
+        assert_eq!(config.population_size, 50);
+        assert_eq!(config.max_generations, 100);
+        assert_eq!(config.stagnation_limit, 20);
+        assert!((config.convergence_threshold - 0.001).abs() < 1e-15);
+        assert_eq!(config.time_limit_ms, Some(10_000));
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_preset_balanced() {
+        let config = GaConfig::balanced();
+        assert_eq!(config.population_size, 100);
+        assert_eq!(config.max_generations, 300);
+        assert_eq!(config.stagnation_limit, 50);
+        assert!((config.convergence_threshold - 0.001).abs() < 1e-15);
+        assert_eq!(config.time_limit_ms, Some(30_000));
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_preset_quality() {
+        let config = GaConfig::quality();
+        assert_eq!(config.population_size, 150);
+        assert_eq!(config.max_generations, 500);
+        assert_eq!(config.stagnation_limit, 80);
+        assert!((config.convergence_threshold - 0.0005).abs() < 1e-15);
+        assert_eq!(config.time_limit_ms, Some(60_000));
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_preset_chainable() {
+        let config = GaConfig::fast()
+            .with_population_size(75)
+            .with_seed(42);
+        assert_eq!(config.population_size, 75);
+        assert_eq!(config.seed, Some(42));
+        assert_eq!(config.time_limit_ms, Some(10_000));
     }
 }

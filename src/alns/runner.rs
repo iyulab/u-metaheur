@@ -354,9 +354,7 @@ mod tests {
 
         fn repair<R: Rng>(&self, solution: &Vec<bool>, _rng: &mut R) -> Vec<bool> {
             let mut result = solution.clone();
-            for bit in &mut result {
-                *bit = true;
-            }
+            result.fill(true);
             result
         }
     }

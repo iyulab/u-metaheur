@@ -175,8 +175,23 @@ impl GaRunner {
             // Update best
             let gen_best = find_best(&population);
             if gen_best.fitness() < best.fitness() {
+                // Check if improvement is significant enough
+                let old_f = best.fitness().to_f64();
+                let new_f = gen_best.fitness().to_f64();
+                let improvement = if old_f.abs() > 1e-15 {
+                    (old_f - new_f).abs() / old_f.abs()
+                } else {
+                    // Old fitness is near zero; any change is significant
+                    (old_f - new_f).abs()
+                };
+
                 best = gen_best.clone();
-                stagnation_counter = 0;
+
+                if improvement >= config.convergence_threshold {
+                    stagnation_counter = 0;
+                } else {
+                    stagnation_counter += 1;
+                }
             } else {
                 stagnation_counter += 1;
             }
@@ -655,6 +670,47 @@ mod tests {
 
         assert!(!result.timed_out);
         assert_eq!(result.generations, 10);
+    }
+
+    #[test]
+    fn test_convergence_threshold_ignores_tiny_improvements() {
+        // With a high convergence threshold, tiny improvements don't reset
+        // the stagnation counter, leading to earlier termination.
+        let problem = OneMaxProblem { n: 20 };
+        let config = GaConfig::default()
+            .with_population_size(50)
+            .with_max_generations(1000)
+            .with_stagnation_limit(10)
+            .with_convergence_threshold(0.5) // Very high — only 50%+ improvements count
+            .with_seed(42)
+            .with_parallel(false);
+
+        let result = GaRunner::run(&problem, &config);
+
+        // Should stagnate quickly because 50% improvement per generation is unlikely
+        assert!(
+            result.stagnated || result.generations < 1000,
+            "expected early stagnation with high threshold, got {} generations",
+            result.generations
+        );
+    }
+
+    #[test]
+    fn test_convergence_threshold_zero_counts_any_improvement() {
+        // With threshold=0.0 (default), any improvement resets stagnation
+        let problem = OneMaxProblem { n: 5 };
+        let config = GaConfig::default()
+            .with_population_size(20)
+            .with_max_generations(200)
+            .with_stagnation_limit(10)
+            .with_convergence_threshold(0.0) // Default: any improvement counts
+            .with_seed(42)
+            .with_parallel(false);
+
+        let result = GaRunner::run(&problem, &config);
+
+        // Should find optimal (all true) or stagnate after finding near-optimal
+        assert!(result.best_fitness <= -3.0);
     }
 
     #[test]

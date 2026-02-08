@@ -218,7 +218,7 @@ mod tests {
 
         // With tournament size = population size, best should be selected
         // most often (though not always due to with-replacement sampling)
-        let mut counts = vec![0u32; 4];
+        let mut counts = [0u32; 4];
         let n = 10000;
         for _ in 0..n {
             let idx = Selection::Tournament(4).select(&pop, &mut rng);
@@ -237,7 +237,7 @@ mod tests {
         let pop = make_population(&[10.0, 5.0, 1.0, 8.0]);
         let mut rng = u_optim::random::create_rng(42);
 
-        let mut counts = vec![0u32; 4];
+        let mut counts = [0u32; 4];
         let n = 10000;
         for _ in 0..n {
             let idx = Selection::Tournament(1).select(&pop, &mut rng);
@@ -254,7 +254,7 @@ mod tests {
         let pop = make_population(&[100.0, 50.0, 1.0, 80.0]);
         let mut rng = u_optim::random::create_rng(42);
 
-        let mut counts = vec![0u32; 4];
+        let mut counts = [0u32; 4];
         let n = 10000;
         for _ in 0..n {
             let idx = Selection::Roulette.select(&pop, &mut rng);
@@ -274,7 +274,7 @@ mod tests {
         let pop = make_population(&[100.0, 50.0, 1.0, 80.0]);
         let mut rng = u_optim::random::create_rng(42);
 
-        let mut counts = vec![0u32; 4];
+        let mut counts = [0u32; 4];
         let n = 10000;
         for _ in 0..n {
             let idx = Selection::Rank.select(&pop, &mut rng);
@@ -305,7 +305,7 @@ mod tests {
         let mut rng = u_optim::random::create_rng(42);
 
         // With equal fitness, all methods should select roughly uniformly
-        let mut counts = vec![0u32; 4];
+        let mut counts = [0u32; 4];
         let n = 10000;
         for _ in 0..n {
             let idx = Selection::Tournament(2).select(&pop, &mut rng);
