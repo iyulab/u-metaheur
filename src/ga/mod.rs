@@ -22,6 +22,7 @@
 //! - De Jong (2006), *Evolutionary Computation: A Unified Approach*
 
 mod config;
+pub mod multi_objective;
 pub mod operators;
 mod runner;
 mod selection;
