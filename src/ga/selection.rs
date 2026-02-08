@@ -185,7 +185,7 @@ fn rank<I: Individual, R: Rng>(population: &[I], rng: &mut R) -> usize {
         }
     }
 
-    indexed.last().unwrap().0 // fallback
+    indexed.last().expect("population has n >= 2 elements").0 // fallback
 }
 
 #[cfg(test)]

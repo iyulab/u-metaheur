@@ -154,7 +154,10 @@ fn pmx_build_child(template: &[usize], donor: &[usize], start: usize, end: usize
         loop {
             let mapped_val = template[pos];
             // Find where mapped_val is in donor
-            let donor_pos = donor.iter().position(|&v| v == mapped_val).unwrap();
+            let donor_pos = donor
+                    .iter()
+                    .position(|&v| v == mapped_val)
+                    .expect("valid permutation: every value in template exists in donor");
             if donor_pos < start || donor_pos > end {
                 // Position is outside segment — it's free
                 child[donor_pos] = donor_val;

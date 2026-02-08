@@ -121,7 +121,7 @@ pub fn non_dominated_sort(objectives: &[Vec<f64>]) -> NondominatedSortResult {
     // Build subsequent fronts
     let mut fronts = vec![front_0];
     loop {
-        let current = fronts.last().unwrap();
+        let current = fronts.last().expect("fronts is initialized with front_0; never empty");
         let mut next_front = Vec::new();
 
         for &i in current {
