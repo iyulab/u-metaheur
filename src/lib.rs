@@ -14,6 +14,8 @@
 //!   multi-rule item ranking.
 //! - **CP (Constraint Programming)**: Domain-agnostic modeling layer for
 //!   constrained optimization with interval, integer, and boolean variables.
+//! - **Tabu Search (TS)**: Single-solution trajectory optimization using
+//!   short-term memory (tabu list) to escape local optima.
 //!
 //! # Architecture
 //!
@@ -28,3 +30,4 @@ pub mod cp;
 pub mod dispatching;
 pub mod ga;
 pub mod sa;
+pub mod tabu;
