@@ -10,7 +10,7 @@ use rayon::prelude::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
-use u_numerics::random::create_rng;
+use u_numflow::random::create_rng;
 
 /// Per-generation population statistics.
 ///

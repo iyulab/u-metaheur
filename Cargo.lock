@@ -618,11 +618,11 @@ dependencies = [
  "rand",
  "rayon",
  "serde",
- "u-numerics",
+ "u-numflow",
 ]
 
 [[package]]
-name = "u-numerics"
+name = "u-numflow"
 version = "0.1.0"
 dependencies = [
  "rand",

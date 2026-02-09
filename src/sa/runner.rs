@@ -5,7 +5,7 @@ use super::types::SaProblem;
 use rand::Rng;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use u_numerics::random::create_rng;
+use u_numflow::random::create_rng;
 
 /// Result of a Simulated Annealing run.
 #[derive(Debug, Clone)]
@@ -355,7 +355,7 @@ mod tests {
 
         fn initial_solution<R: Rng>(&self, rng: &mut R) -> Vec<usize> {
             let mut perm: Vec<usize> = (0..self.n).collect();
-            u_numerics::random::shuffle(&mut perm, rng);
+            u_numflow::random::shuffle(&mut perm, rng);
             perm
         }
 

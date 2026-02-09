@@ -250,7 +250,7 @@ fn random_segment<R: Rng>(n: usize, rng: &mut R) -> (usize, usize) {
 mod tests {
     use super::*;
     use std::collections::HashSet;
-    use u_numerics::random::create_rng;
+    use u_numflow::random::create_rng;
 
     /// Check that a slice is a valid permutation of 0..n.
     fn is_valid_permutation(perm: &[usize], n: usize) -> bool {

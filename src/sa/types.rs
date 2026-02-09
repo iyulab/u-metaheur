@@ -22,7 +22,7 @@ use rand::Rng;
 ///
 ///     fn initial_solution<R: Rng>(&self, rng: &mut R) -> Vec<usize> {
 ///         let mut tour: Vec<usize> = (0..self.distances.len()).collect();
-///         u_numerics::random::shuffle(&mut tour, rng);
+///         u_numflow::random::shuffle(&mut tour, rng);
 ///         tour
 ///     }
 ///
