@@ -32,7 +32,7 @@ pub trait BrkgaDecoder: Send + Sync {
     ///
     /// # Arguments
     /// * `keys` - A slice of `f64` values in `[0.0, 1.0)`.
-    ///   Length equals [`BrkgaConfig::chromosome_length`].
+    ///   Length equals [`super::BrkgaConfig::chromosome_length`].
     ///
     /// Lower cost is better (minimization).
     fn decode(&self, keys: &[f64]) -> f64;
