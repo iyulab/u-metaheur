@@ -16,6 +16,8 @@
 //!   constrained optimization with interval, integer, and boolean variables.
 //! - **Tabu Search (TS)**: Single-solution trajectory optimization using
 //!   short-term memory (tabu list) to escape local optima.
+//! - **Variable Neighborhood Search (VNS)**: Systematic neighborhood
+//!   switching for escaping local optima via diversified perturbation.
 //!
 //! # Architecture
 //!
@@ -31,3 +33,4 @@ pub mod dispatching;
 pub mod ga;
 pub mod sa;
 pub mod tabu;
+pub mod vns;
