@@ -221,7 +221,7 @@ mod tests {
     #[test]
     fn test_tournament_favors_best() {
         let pop = make_population(&[10.0, 5.0, 1.0, 8.0]);
-        let mut rng = u_optim::random::create_rng(42);
+        let mut rng = u_numerics::random::create_rng(42);
 
         // With tournament size = population size, best should be selected
         // most often (though not always due to with-replacement sampling)
@@ -242,7 +242,7 @@ mod tests {
     #[test]
     fn test_tournament_size_1_is_random() {
         let pop = make_population(&[10.0, 5.0, 1.0, 8.0]);
-        let mut rng = u_optim::random::create_rng(42);
+        let mut rng = u_numerics::random::create_rng(42);
 
         let mut counts = [0u32; 4];
         let n = 10000;
@@ -259,7 +259,7 @@ mod tests {
     #[test]
     fn test_roulette_favors_best() {
         let pop = make_population(&[100.0, 50.0, 1.0, 80.0]);
-        let mut rng = u_optim::random::create_rng(42);
+        let mut rng = u_numerics::random::create_rng(42);
 
         let mut counts = [0u32; 4];
         let n = 10000;
@@ -279,7 +279,7 @@ mod tests {
     #[test]
     fn test_rank_favors_best() {
         let pop = make_population(&[100.0, 50.0, 1.0, 80.0]);
-        let mut rng = u_optim::random::create_rng(42);
+        let mut rng = u_numerics::random::create_rng(42);
 
         let mut counts = [0u32; 4];
         let n = 10000;
@@ -299,7 +299,7 @@ mod tests {
     #[test]
     fn test_single_individual() {
         let pop = make_population(&[5.0]);
-        let mut rng = u_optim::random::create_rng(42);
+        let mut rng = u_numerics::random::create_rng(42);
 
         assert_eq!(Selection::Tournament(3).select(&pop, &mut rng), 0);
         assert_eq!(Selection::Roulette.select(&pop, &mut rng), 0);
@@ -309,7 +309,7 @@ mod tests {
     #[test]
     fn test_equal_fitness() {
         let pop = make_population(&[5.0, 5.0, 5.0, 5.0]);
-        let mut rng = u_optim::random::create_rng(42);
+        let mut rng = u_numerics::random::create_rng(42);
 
         // With equal fitness, all methods should select roughly uniformly
         let mut counts = [0u32; 4];
@@ -330,7 +330,7 @@ mod tests {
     #[should_panic(expected = "cannot select from empty population")]
     fn test_empty_population_panics() {
         let pop: Vec<TestInd> = vec![];
-        let mut rng = u_optim::random::create_rng(42);
+        let mut rng = u_numerics::random::create_rng(42);
         Selection::Tournament(3).select(&pop, &mut rng);
     }
 }

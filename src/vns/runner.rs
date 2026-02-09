@@ -59,8 +59,8 @@ impl VnsRunner {
     /// ```
     pub fn run<P: VnsProblem>(problem: &P, config: &VnsConfig) -> VnsResult<P::Solution> {
         let mut rng = match config.seed {
-            Some(s) => u_optim::random::create_rng(s),
-            None => u_optim::random::create_rng(42),
+            Some(s) => u_numerics::random::create_rng(s),
+            None => u_numerics::random::create_rng(42),
         };
 
         let k_max = problem.neighborhood_count();
@@ -250,7 +250,7 @@ mod tests {
 
         fn initial_solution<R: Rng>(&self, rng: &mut R) -> Vec<usize> {
             let mut perm: Vec<usize> = (0..self.n).collect();
-            u_optim::random::shuffle(&mut perm, rng);
+            u_numerics::random::shuffle(&mut perm, rng);
             perm
         }
 

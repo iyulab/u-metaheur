@@ -5,7 +5,7 @@ use super::types::{AlnsProblem, DestroyOperator, RepairOperator};
 use rand::Rng;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use u_optim::random::create_rng;
+use u_numerics::random::create_rng;
 
 /// Result of an ALNS optimization run.
 #[derive(Debug, Clone)]

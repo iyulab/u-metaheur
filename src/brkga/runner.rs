@@ -6,7 +6,7 @@ use rand::Rng;
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use u_optim::random::create_rng;
+use u_numerics::random::create_rng;
 
 /// A chromosome in the BRKGA population.
 #[derive(Debug, Clone)]
