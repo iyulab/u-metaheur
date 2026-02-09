@@ -8,13 +8,14 @@ description = "Domain-agnostic metaheuristic optimization framework: GA, BRKGA, 
 repository = "https://github.com/iyulab/u-metaheur"
 keywords = ["optimization", "genetic-algorithm", "metaheuristic", "evolutionary"]
 categories = ["algorithms", "science"]
+readme = "README.md"
 
 [features]
 default = []
 serde = ["dep:serde"]
 
 [dependencies]
-u-optim = { path = "../u-optim" }
+u-optim = { version = "0.1", path = "../u-optim" }
 rand = "0.9"
 rayon = "1.10"
 serde = { version = "1.0", features = ["derive"], optional = true }
