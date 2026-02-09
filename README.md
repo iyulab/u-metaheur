@@ -2,8 +2,10 @@
 
 **Domain-agnostic metaheuristic optimization framework**
 
+[![Crates.io](https://img.shields.io/crates/v/u-metaheur.svg)](https://crates.io/crates/u-metaheur)
+[![docs.rs](https://docs.rs/u-metaheur/badge.svg)](https://docs.rs/u-metaheur)
+[![CI](https://github.com/iyulab/u-metaheur/actions/workflows/ci.yml/badge.svg)](https://github.com/iyulab/u-metaheur/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-2021-orange.svg)](https://www.rust-lang.org/)
 
 ## Overview
 
