@@ -16,10 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: iyulab/u-optim
-          path: ../u-optim
+      - name: Checkout path dependencies
+        run: git clone --depth 1 https://github.com/iyulab/u-optim.git ../u-optim
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --all-targets
@@ -39,10 +37,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: iyulab/u-optim
-          path: ../u-optim
+      - name: Checkout path dependencies
+        run: git clone --depth 1 https://github.com/iyulab/u-optim.git ../u-optim
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -58,10 +54,8 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: iyulab/u-optim
-          path: ../u-optim
+      - name: Checkout path dependencies
+        run: git clone --depth 1 https://github.com/iyulab/u-optim.git ../u-optim
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --all-targets
@@ -71,10 +65,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: iyulab/u-optim
-          path: ../u-optim
+      - name: Checkout path dependencies
+        run: git clone --depth 1 https://github.com/iyulab/u-optim.git ../u-optim
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo bench --no-run
@@ -84,10 +76,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: iyulab/u-optim
-          path: ../u-optim
+      - name: Checkout path dependencies
+        run: git clone --depth 1 https://github.com/iyulab/u-optim.git ../u-optim
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo doc --no-deps
@@ -99,10 +89,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: iyulab/u-optim
-          path: ../u-optim
+      - name: Checkout path dependencies
+        run: git clone --depth 1 https://github.com/iyulab/u-optim.git ../u-optim
       - name: Install cargo-audit
         run: cargo install cargo-audit
       - run: cargo audit
@@ -113,10 +101,8 @@ jobs:
     if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: iyulab/u-optim
-          path: ../u-optim
+      - name: Checkout path dependencies
+        run: git clone --depth 1 https://github.com/iyulab/u-optim.git ../u-optim
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools-preview
