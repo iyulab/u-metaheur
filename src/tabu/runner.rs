@@ -15,8 +15,8 @@
 //! Glover, F. (1989). "Tabu Search—Part I", *ORSA Journal on Computing* 1(3), 190-206.
 //! Glover, F. (1990). "Tabu Search—Part II", *ORSA Journal on Computing* 2(1), 4-32.
 
-use std::collections::VecDeque;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 
 use super::config::TabuConfig;
 use super::types::TabuProblem;
@@ -217,7 +217,11 @@ mod tests {
 
         let result = TabuRunner::run(&problem, &config);
 
-        assert_eq!(result.best, 5, "expected optimum at x=5, got {}", result.best);
+        assert_eq!(
+            result.best, 5,
+            "expected optimum at x=5, got {}",
+            result.best
+        );
         assert!(
             result.best_cost < 1e-10,
             "expected zero cost, got {}",

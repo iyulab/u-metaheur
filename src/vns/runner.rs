@@ -188,13 +188,15 @@ mod tests {
     #[test]
     fn test_vns_quadratic_finds_optimum() {
         let problem = DiscreteQuadratic;
-        let config = VnsConfig::default()
-            .with_max_iterations(50)
-            .with_seed(42);
+        let config = VnsConfig::default().with_max_iterations(50).with_seed(42);
 
         let result = VnsRunner::run(&problem, &config);
 
-        assert_eq!(result.best, 10, "expected optimum at x=10, got {}", result.best);
+        assert_eq!(
+            result.best, 10,
+            "expected optimum at x=10, got {}",
+            result.best
+        );
         assert!(
             result.best_cost < 1e-10,
             "expected zero cost, got {}",
@@ -205,9 +207,7 @@ mod tests {
     #[test]
     fn test_vns_cost_history_non_increasing() {
         let problem = DiscreteQuadratic;
-        let config = VnsConfig::default()
-            .with_max_iterations(30)
-            .with_seed(42);
+        let config = VnsConfig::default().with_max_iterations(30).with_seed(42);
 
         let result = VnsRunner::run(&problem, &config);
 
@@ -280,19 +280,13 @@ mod tests {
             let mut improved = true;
             while improved {
                 improved = false;
-                let current_cost: usize = current
-                    .iter()
-                    .enumerate()
-                    .filter(|&(i, &v)| i != v)
-                    .count();
+                let current_cost: usize =
+                    current.iter().enumerate().filter(|&(i, &v)| i != v).count();
                 for i in 0..n {
                     for j in (i + 1)..n {
                         current.swap(i, j);
-                        let new_cost: usize = current
-                            .iter()
-                            .enumerate()
-                            .filter(|&(k, &v)| k != v)
-                            .count();
+                        let new_cost: usize =
+                            current.iter().enumerate().filter(|&(k, &v)| k != v).count();
                         if new_cost < current_cost {
                             improved = true;
                             break;
@@ -311,9 +305,7 @@ mod tests {
     #[test]
     fn test_vns_permutation_sort() {
         let problem = PermSortVns { n: 8 };
-        let config = VnsConfig::default()
-            .with_max_iterations(100)
-            .with_seed(42);
+        let config = VnsConfig::default().with_max_iterations(100).with_seed(42);
 
         let result = VnsRunner::run(&problem, &config);
 
@@ -327,17 +319,12 @@ mod tests {
     #[test]
     fn test_vns_neighborhoods_explored() {
         let problem = DiscreteQuadratic;
-        let config = VnsConfig::default()
-            .with_max_iterations(20)
-            .with_seed(42);
+        let config = VnsConfig::default().with_max_iterations(20).with_seed(42);
 
         let result = VnsRunner::run(&problem, &config);
 
         // iterations counts total neighborhood switches
-        assert!(
-            result.iterations > 0,
-            "expected some iterations to execute"
-        );
+        assert!(result.iterations > 0, "expected some iterations to execute");
     }
 
     #[test]
@@ -347,9 +334,15 @@ mod tests {
 
         impl VnsProblem for SingleNeighborhood {
             type Solution = i32;
-            fn initial_solution<R: Rng>(&self, _rng: &mut R) -> i32 { 20 }
-            fn cost(&self, &x: &i32) -> f64 { (x as f64).powi(2) }
-            fn neighborhood_count(&self) -> usize { 1 }
+            fn initial_solution<R: Rng>(&self, _rng: &mut R) -> i32 {
+                20
+            }
+            fn cost(&self, &x: &i32) -> f64 {
+                (x as f64).powi(2)
+            }
+            fn neighborhood_count(&self) -> usize {
+                1
+            }
             fn shake<R: Rng>(&self, &x: &i32, _k: usize, rng: &mut R) -> i32 {
                 x + rng.random_range(-5..=5)
             }
@@ -362,18 +355,20 @@ mod tests {
                     let cc = (c as f64).powi(2);
                     let cl = (l as f64).powi(2);
                     let cr = (r as f64).powi(2);
-                    if cl < cc { c = l; }
-                    else if cr < cc { c = r; }
-                    else { break; }
+                    if cl < cc {
+                        c = l;
+                    } else if cr < cc {
+                        c = r;
+                    } else {
+                        break;
+                    }
                 }
                 c
             }
         }
 
         let problem = SingleNeighborhood;
-        let config = VnsConfig::default()
-            .with_max_iterations(50)
-            .with_seed(42);
+        let config = VnsConfig::default().with_max_iterations(50).with_seed(42);
 
         let result = VnsRunner::run(&problem, &config);
 
@@ -403,9 +398,7 @@ mod tests {
     #[test]
     fn test_vns_best_iteration_recorded() {
         let problem = DiscreteQuadratic;
-        let config = VnsConfig::default()
-            .with_max_iterations(30)
-            .with_seed(42);
+        let config = VnsConfig::default().with_max_iterations(30).with_seed(42);
 
         let result = VnsRunner::run(&problem, &config);
 
