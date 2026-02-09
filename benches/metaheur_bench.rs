@@ -149,12 +149,16 @@ fn bench_sa_sphere(c: &mut Criterion) {
             .with_min_temperature(0.01)
             .with_max_iterations(1000)
             .with_seed(42);
-        group.bench_with_input(BenchmarkId::from_parameter(dim), &(problem, config), |b, (p, c)| {
-            b.iter(|| {
-                let result = SaRunner::run(black_box(p), black_box(c));
-                black_box(result)
-            })
-        });
+        group.bench_with_input(
+            BenchmarkId::from_parameter(dim),
+            &(problem, config),
+            |b, (p, c)| {
+                b.iter(|| {
+                    let result = SaRunner::run(black_box(p), black_box(c));
+                    black_box(result)
+                })
+            },
+        );
     }
     group.finish();
 }
@@ -183,5 +187,10 @@ fn bench_brkga_onemax(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_ga_sphere, bench_sa_sphere, bench_brkga_onemax);
+criterion_group!(
+    benches,
+    bench_ga_sphere,
+    bench_sa_sphere,
+    bench_brkga_onemax
+);
 criterion_main!(benches);

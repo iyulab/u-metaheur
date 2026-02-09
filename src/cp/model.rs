@@ -86,9 +86,7 @@ pub enum Objective {
     MinimizeMaxEnd,
 
     /// Hierarchical (lexicographic) multi-objective.
-    Hierarchical {
-        objectives: Vec<Objective>,
-    },
+    Hierarchical { objectives: Vec<Objective> },
 }
 
 /// A constraint programming model.
@@ -314,12 +312,8 @@ mod tests {
     fn test_alternative() {
         let mut model = CpModel::new("test", 1000);
         model.add_interval(IntervalVar::new("main", 0, 100, 50, 200));
-        model.add_interval(
-            IntervalVar::new("alt1", 0, 100, 50, 200).as_optional("alt1_p"),
-        );
-        model.add_interval(
-            IntervalVar::new("alt2", 0, 100, 50, 200).as_optional("alt2_p"),
-        );
+        model.add_interval(IntervalVar::new("alt1", 0, 100, 50, 200).as_optional("alt1_p"));
+        model.add_interval(IntervalVar::new("alt2", 0, 100, 50, 200).as_optional("alt2_p"));
         model.add_constraint(Constraint::Alternative {
             main: "main".into(),
             alternatives: vec!["alt1".into(), "alt2".into()],

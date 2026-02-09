@@ -134,8 +134,14 @@ impl AlnsRunner {
         RP: RepairOperator<P::Solution>,
     {
         config.validate().expect("invalid AlnsConfig");
-        assert!(!destroy_ops.is_empty(), "at least one destroy operator required");
-        assert!(!repair_ops.is_empty(), "at least one repair operator required");
+        assert!(
+            !destroy_ops.is_empty(),
+            "at least one destroy operator required"
+        );
+        assert!(
+            !repair_ops.is_empty(),
+            "at least one repair operator required"
+        );
 
         let mut rng = match config.seed {
             Some(seed) => create_rng(seed),
@@ -236,7 +242,10 @@ impl AlnsRunner {
         }
 
         // Final history entry
-        if cost_history.last().is_none_or(|&last| (last - best_cost).abs() > 1e-15) {
+        if cost_history
+            .last()
+            .is_none_or(|&last| (last - best_cost).abs() > 1e-15)
+        {
             cost_history.push(best_cost);
         }
 
@@ -415,9 +424,7 @@ mod tests {
             TestRepair::Full(FullRepair),
         ];
 
-        let config = AlnsConfig::default()
-            .with_max_iterations(500)
-            .with_seed(42);
+        let config = AlnsConfig::default().with_max_iterations(500).with_seed(42);
 
         let result = AlnsRunner::run(&problem, &destroy_ops, &repair_ops, &config);
 
@@ -478,13 +485,8 @@ mod tests {
             cancel_clone.store(true, Ordering::Relaxed);
         });
 
-        let result = AlnsRunner::run_with_cancel(
-            &problem,
-            &destroy_ops,
-            &repair_ops,
-            &config,
-            Some(cancel),
-        );
+        let result =
+            AlnsRunner::run_with_cancel(&problem, &destroy_ops, &repair_ops, &config, Some(cancel));
         assert!(result.cancelled);
     }
 
@@ -517,9 +519,7 @@ mod tests {
         let destroy_ops = [RandomDestroy];
         let repair_ops = [FullRepair];
 
-        let config = AlnsConfig::default()
-            .with_max_iterations(200)
-            .with_seed(42);
+        let config = AlnsConfig::default().with_max_iterations(200).with_seed(42);
 
         let result = AlnsRunner::run(&problem, &destroy_ops, &repair_ops, &config);
 

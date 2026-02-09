@@ -193,7 +193,10 @@ mod tests {
 
     #[test]
     fn test_validate_bad_iterations() {
-        let config = AlnsConfig { max_iterations: 0, ..Default::default() };
+        let config = AlnsConfig {
+            max_iterations: 0,
+            ..Default::default()
+        };
         assert!(config.validate().is_err());
     }
 

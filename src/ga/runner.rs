@@ -149,10 +149,8 @@ impl GaRunner {
             });
 
             // Elite preservation
-            let elite_count =
-                (config.population_size as f64 * config.elite_ratio) as usize;
-            let mut next_gen: Vec<P::Individual> =
-                population[..elite_count].to_vec();
+            let elite_count = (config.population_size as f64 * config.elite_ratio) as usize;
+            let mut next_gen: Vec<P::Individual> = population[..elite_count].to_vec();
 
             // Generate offspring
             while next_gen.len() < config.population_size {
@@ -183,12 +181,10 @@ impl GaRunner {
 
             // Evaluate new individuals (skip elites, they're already evaluated)
             if config.parallel {
-                next_gen[elite_count..]
-                    .par_iter_mut()
-                    .for_each(|ind| {
-                        let f = problem.evaluate(ind);
-                        ind.set_fitness(f);
-                    });
+                next_gen[elite_count..].par_iter_mut().for_each(|ind| {
+                    let f = problem.evaluate(ind);
+                    ind.set_fitness(f);
+                });
             } else {
                 for ind in &mut next_gen[elite_count..] {
                     let f = problem.evaluate(ind);
@@ -293,17 +289,14 @@ fn find_best<I: Individual>(population: &[I]) -> &I {
 
 /// Computes population statistics for one generation.
 fn compute_generation_stats<I: Individual>(population: &[I], generation: usize) -> GenerationStats {
-    let fitnesses: Vec<f64> = population.iter().map(|ind| ind.fitness().to_f64()).collect();
+    let fitnesses: Vec<f64> = population
+        .iter()
+        .map(|ind| ind.fitness().to_f64())
+        .collect();
     let n = fitnesses.len() as f64;
 
-    let best = fitnesses
-        .iter()
-        .copied()
-        .fold(f64::INFINITY, f64::min);
-    let worst = fitnesses
-        .iter()
-        .copied()
-        .fold(f64::NEG_INFINITY, f64::max);
+    let best = fitnesses.iter().copied().fold(f64::INFINITY, f64::min);
+    let worst = fitnesses.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let mean = fitnesses.iter().sum::<f64>() / n;
     let variance = fitnesses.iter().map(|&f| (f - mean).powi(2)).sum::<f64>() / n;
     let std_dev = variance.sqrt();
@@ -364,12 +357,7 @@ mod tests {
             -(ind.bits.iter().filter(|&&b| b).count() as f64)
         }
 
-        fn crossover<R: Rng>(
-            &self,
-            p1: &BitString,
-            p2: &BitString,
-            rng: &mut R,
-        ) -> Vec<BitString> {
+        fn crossover<R: Rng>(&self, p1: &BitString, p2: &BitString, rng: &mut R) -> Vec<BitString> {
             // Single-point crossover
             let point = rng.random_range(0..self.n);
             let mut c1_bits = Vec::with_capacity(self.n);
@@ -579,9 +567,7 @@ mod tests {
         type Individual = RealVector;
 
         fn create_individual<R: Rng>(&self, rng: &mut R) -> RealVector {
-            let genes: Vec<f64> = (0..self.dim)
-                .map(|_| rng.random_range(-5.0..5.0))
-                .collect();
+            let genes: Vec<f64> = (0..self.dim).map(|_| rng.random_range(-5.0..5.0)).collect();
             RealVector {
                 genes,
                 fitness: f64::INFINITY,

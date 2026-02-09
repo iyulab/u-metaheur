@@ -181,15 +181,13 @@ mod tests {
 
     #[test]
     fn test_validate_bad_alpha() {
-        let config = SaConfig::default()
-            .with_cooling(CoolingSchedule::Geometric { alpha: 1.5 });
+        let config = SaConfig::default().with_cooling(CoolingSchedule::Geometric { alpha: 1.5 });
         assert!(config.validate().is_err());
     }
 
     #[test]
     fn test_validate_bad_beta() {
-        let config = SaConfig::default()
-            .with_cooling(CoolingSchedule::LundyMees { beta: -1.0 });
+        let config = SaConfig::default().with_cooling(CoolingSchedule::LundyMees { beta: -1.0 });
         assert!(config.validate().is_err());
     }
 }

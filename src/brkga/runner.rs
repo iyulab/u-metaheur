@@ -83,7 +83,11 @@ impl BrkgaRunner {
         decode_population(decoder, &mut population, config.parallel);
 
         // Sort by cost (ascending)
-        population.sort_by(|a, b| a.cost.partial_cmp(&b.cost).unwrap_or(std::cmp::Ordering::Equal));
+        population.sort_by(|a, b| {
+            a.cost
+                .partial_cmp(&b.cost)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         let mut best = population[0].clone();
         let mut cost_history = Vec::with_capacity(config.max_generations);
@@ -153,7 +157,9 @@ impl BrkgaRunner {
 
             // Sort
             next_gen.sort_by(|a, b| {
-                a.cost.partial_cmp(&b.cost).unwrap_or(std::cmp::Ordering::Equal)
+                a.cost
+                    .partial_cmp(&b.cost)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             });
 
             population = next_gen;
@@ -196,11 +202,7 @@ impl BrkgaRunner {
     }
 }
 
-fn decode_population<D: BrkgaDecoder>(
-    decoder: &D,
-    population: &mut [Chromosome],
-    parallel: bool,
-) {
+fn decode_population<D: BrkgaDecoder>(decoder: &D, population: &mut [Chromosome], parallel: bool) {
     if parallel {
         population.par_iter_mut().for_each(|chr| {
             chr.cost = decoder.decode(&chr.keys);
@@ -226,8 +228,7 @@ mod tests {
     impl BrkgaDecoder for SortingDecoder {
         fn decode(&self, keys: &[f64]) -> f64 {
             // Decode keys as permutation: sort indices by key value
-            let mut indexed: Vec<(usize, f64)> =
-                keys.iter().cloned().enumerate().collect();
+            let mut indexed: Vec<(usize, f64)> = keys.iter().cloned().enumerate().collect();
             indexed.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
             let perm: Vec<usize> = indexed.iter().map(|&(i, _)| i).collect();
 

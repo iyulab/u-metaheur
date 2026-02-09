@@ -82,7 +82,10 @@ impl Selection {
     /// # Panics
     /// Panics if `population` is empty.
     pub fn select<I: Individual, R: Rng>(&self, population: &[I], rng: &mut R) -> usize {
-        assert!(!population.is_empty(), "cannot select from empty population");
+        assert!(
+            !population.is_empty(),
+            "cannot select from empty population"
+        );
 
         match self {
             Selection::Tournament(k) => tournament(population, *k, rng),
@@ -117,13 +120,13 @@ fn roulette<I: Individual, R: Rng>(population: &[I], rng: &mut R) -> usize {
         return 0;
     }
 
-    let fitnesses: Vec<f64> = population.iter().map(|ind| ind.fitness().to_f64()).collect();
+    let fitnesses: Vec<f64> = population
+        .iter()
+        .map(|ind| ind.fitness().to_f64())
+        .collect();
 
     // Find max fitness for inversion
-    let max_fitness = fitnesses
-        .iter()
-        .cloned()
-        .fold(f64::NEG_INFINITY, f64::max);
+    let max_fitness = fitnesses.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
 
     let epsilon = 1e-10;
 
@@ -132,7 +135,11 @@ fn roulette<I: Individual, R: Rng>(population: &[I], rng: &mut R) -> usize {
         .iter()
         .map(|&f| {
             let w = max_fitness - f + epsilon;
-            if w > 0.0 { w } else { epsilon }
+            if w > 0.0 {
+                w
+            } else {
+                epsilon
+            }
         })
         .collect();
 

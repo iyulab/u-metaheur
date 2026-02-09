@@ -344,15 +344,30 @@ mod tests {
         let mut solution = CpSolution::empty(SolverStatus::Feasible);
         solution.intervals.insert(
             "a".into(),
-            IntervalSolution { start: 0, end: 50, duration: 50, is_present: true },
+            IntervalSolution {
+                start: 0,
+                end: 50,
+                duration: 50,
+                is_present: true,
+            },
         );
         solution.intervals.insert(
             "b".into(),
-            IntervalSolution { start: 10, end: 80, duration: 70, is_present: true },
+            IntervalSolution {
+                start: 10,
+                end: 80,
+                duration: 70,
+                is_present: true,
+            },
         );
         solution.intervals.insert(
             "c".into(),
-            IntervalSolution { start: 0, end: 100, duration: 100, is_present: false },
+            IntervalSolution {
+                start: 0,
+                end: 100,
+                duration: 100,
+                is_present: false,
+            },
         );
 
         assert_eq!(solution.max_end(), 80); // c is not present

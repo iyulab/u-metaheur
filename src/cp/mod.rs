@@ -28,5 +28,7 @@ mod solver;
 mod variables;
 
 pub use model::{Constraint, CpModel, Objective};
-pub use solver::{CpSolution, CpSolver, IntervalSolution, SimpleCpSolver, SolverConfig, SolverStatus};
+pub use solver::{
+    CpSolution, CpSolver, IntervalSolution, SimpleCpSolver, SolverConfig, SolverStatus,
+};
 pub use variables::{BoolVar, DurationVar, IntVar, IntervalVar, TimeVar};

@@ -121,7 +121,9 @@ pub fn non_dominated_sort(objectives: &[Vec<f64>]) -> NondominatedSortResult {
     // Build subsequent fronts
     let mut fronts = vec![front_0];
     loop {
-        let current = fronts.last().expect("fronts is initialized with front_0; never empty");
+        let current = fronts
+            .last()
+            .expect("fronts is initialized with front_0; never empty");
         let mut next_front = Vec::new();
 
         for &i in current {
@@ -325,11 +327,7 @@ mod tests {
 
     #[test]
     fn test_all_equal() {
-        let objs = vec![
-            vec![2.0, 2.0],
-            vec![2.0, 2.0],
-            vec![2.0, 2.0],
-        ];
+        let objs = vec![vec![2.0, 2.0], vec![2.0, 2.0], vec![2.0, 2.0]];
         let result = non_dominated_sort(&objs);
         // All are non-dominated (identical solutions don't dominate each other)
         assert!(result.ranks.iter().all(|&r| r == 0));
@@ -342,10 +340,10 @@ mod tests {
             vec![3.0, 1.0, 5.0], // front 0
             vec![5.0, 3.0, 1.0], // front 0
             vec![4.0, 4.0, 4.0], // dominated by none of the above individually? check:
-                                  // vs [0]: 4>1, 4<5, 4>3 → neither
-                                  // vs [1]: 4>3, 4>1, 4<5 → neither
-                                  // vs [2]: 4<5, 4>3, 4>1 → neither
-                                  // front 0 too!
+                                 // vs [0]: 4>1, 4<5, 4>3 → neither
+                                 // vs [1]: 4>3, 4>1, 4<5 → neither
+                                 // vs [2]: 4<5, 4>3, 4>1 → neither
+                                 // front 0 too!
         ];
         let result = non_dominated_sort(&objs);
         assert_eq!(result.ranks[0], 0);
@@ -382,7 +380,7 @@ mod tests {
         let dist = crowding_distance(&objs);
         assert!(dist[0].is_infinite()); // boundary
         assert!(dist[2].is_infinite()); // boundary
-        assert!(dist[1].is_finite());   // interior
+        assert!(dist[1].is_finite()); // interior
         assert!(dist[1] > 0.0);
     }
 
@@ -413,11 +411,7 @@ mod tests {
     #[test]
     fn test_crowding_zero_range_objective() {
         // One objective has zero range — should not cause division by zero
-        let objs = vec![
-            vec![1.0, 5.0],
-            vec![2.0, 5.0],
-            vec![3.0, 5.0],
-        ];
+        let objs = vec![vec![1.0, 5.0], vec![2.0, 5.0], vec![3.0, 5.0]];
         let dist = crowding_distance(&objs);
         assert!(dist[0].is_infinite());
         assert!(dist[2].is_infinite());

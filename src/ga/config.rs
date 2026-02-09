@@ -435,9 +435,7 @@ mod tests {
 
     #[test]
     fn test_preset_chainable() {
-        let config = GaConfig::fast()
-            .with_population_size(75)
-            .with_seed(42);
+        let config = GaConfig::fast().with_population_size(75).with_seed(42);
         assert_eq!(config.population_size, 75);
         assert_eq!(config.seed, Some(42));
         assert_eq!(config.time_limit_ms, Some(10_000));

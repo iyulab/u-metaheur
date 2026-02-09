@@ -245,10 +245,22 @@ mod tests {
 
     fn test_items() -> Vec<Item> {
         vec![
-            Item { value: 3.0, weight: 1.0 },
-            Item { value: 1.0, weight: 2.0 },
-            Item { value: 2.0, weight: 1.0 },
-            Item { value: 1.0, weight: 3.0 },
+            Item {
+                value: 3.0,
+                weight: 1.0,
+            },
+            Item {
+                value: 1.0,
+                weight: 2.0,
+            },
+            Item {
+                value: 2.0,
+                weight: 1.0,
+            },
+            Item {
+                value: 1.0,
+                weight: 3.0,
+            },
         ]
     }
 
@@ -268,9 +280,7 @@ mod tests {
     fn test_sequential_tie_breaking() {
         // Items 1 and 3 both have value=1.0
         // ByWeight should break the tie: item 1 (weight=2) vs item 3 (weight=3)
-        let engine = RuleEngine::new()
-            .with_rule(ByValue)
-            .with_rule(ByWeight);
+        let engine = RuleEngine::new().with_rule(ByValue).with_rule(ByWeight);
         let items = test_items();
         let sorted = engine.sort(&items, &EmptyContext);
 
@@ -343,14 +353,18 @@ mod tests {
     fn test_epsilon_comparison() {
         // Two items with nearly identical values (within epsilon)
         let items = vec![
-            Item { value: 1.0, weight: 5.0 },
-            Item { value: 1.0 + 1e-12, weight: 1.0 },
+            Item {
+                value: 1.0,
+                weight: 5.0,
+            },
+            Item {
+                value: 1.0 + 1e-12,
+                weight: 1.0,
+            },
         ];
 
         // With ByValue alone, they should tie; ByWeight breaks tie
-        let engine = RuleEngine::new()
-            .with_rule(ByValue)
-            .with_rule(ByWeight);
+        let engine = RuleEngine::new().with_rule(ByValue).with_rule(ByWeight);
         let sorted = engine.sort(&items, &EmptyContext);
 
         // Item with weight=1 should come first (within epsilon on value,
@@ -361,9 +375,18 @@ mod tests {
     #[test]
     fn test_by_index_tie_breaker() {
         let items = vec![
-            Item { value: 1.0, weight: 1.0 },
-            Item { value: 1.0, weight: 1.0 },
-            Item { value: 1.0, weight: 1.0 },
+            Item {
+                value: 1.0,
+                weight: 1.0,
+            },
+            Item {
+                value: 1.0,
+                weight: 1.0,
+            },
+            Item {
+                value: 1.0,
+                weight: 1.0,
+            },
         ];
 
         let engine = RuleEngine::new()
@@ -381,7 +404,10 @@ mod tests {
             .with_weighted_rule(ByValue, 2.0)
             .with_weighted_rule(ByWeight, 1.0);
 
-        let item = Item { value: 3.0, weight: 5.0 };
+        let item = Item {
+            value: 3.0,
+            weight: 5.0,
+        };
         let s = engine.score(&item, &EmptyContext);
 
         // 2.0 * 3.0 + 1.0 * 5.0 = 11.0
@@ -411,9 +437,18 @@ mod tests {
     #[test]
     fn test_context_dependent_rule() {
         let items = vec![
-            Item { value: 5.0, weight: 1.0 },
-            Item { value: 0.5, weight: 1.0 }, // below threshold
-            Item { value: 3.0, weight: 1.0 },
+            Item {
+                value: 5.0,
+                weight: 1.0,
+            },
+            Item {
+                value: 0.5,
+                weight: 1.0,
+            }, // below threshold
+            Item {
+                value: 3.0,
+                weight: 1.0,
+            },
         ];
 
         let ctx = Threshold { min_value: 1.0 };

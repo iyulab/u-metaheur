@@ -142,7 +142,10 @@ impl SaRunner {
         }
 
         // Final history entry
-        if cost_history.last().is_none_or(|&last| (last - best_cost).abs() > 1e-15) {
+        if cost_history
+            .last()
+            .is_none_or(|&last| (last - best_cost).abs() > 1e-15)
+        {
             cost_history.push(best_cost);
         }
 
@@ -169,8 +172,7 @@ fn cool(temperature: f64, config: &SaConfig, step: usize, linear_max_steps: usiz
                 config.min_temperature
             } else {
                 let t = config.initial_temperature
-                    - (step + 1) as f64
-                        * (config.initial_temperature - config.min_temperature)
+                    - (step + 1) as f64 * (config.initial_temperature - config.min_temperature)
                         / linear_max_steps as f64;
                 t.max(config.min_temperature)
             }
@@ -359,10 +361,7 @@ mod tests {
 
         fn cost(&self, perm: &Vec<usize>) -> f64 {
             // Number of elements not in their correct position
-            perm.iter()
-                .enumerate()
-                .filter(|&(i, &v)| i != v)
-                .count() as f64
+            perm.iter().enumerate().filter(|&(i, &v)| i != v).count() as f64
         }
 
         fn neighbor<R: Rng>(&self, perm: &Vec<usize>, rng: &mut R) -> Vec<usize> {
