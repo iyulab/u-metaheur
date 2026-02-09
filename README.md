@@ -7,16 +7,7 @@
 
 ## Overview
 
-u-metaheur provides generic implementations of common metaheuristic algorithms. It sits at **Layer 2 (Algorithms)** in the U-Engine architecture, depending only on `u-optim`. It contains no domain-specific concepts — scheduling, nesting, routing, etc. are all defined by consumers at higher layers.
-
-```
-Consumer Layer
-  u-aps, u-nesting
-Framework Layer
-  u-schedule  →  u-metaheur  ← you are here
-                      ↓
-Foundation Layer    u-optim
-```
+u-metaheur provides generic implementations of common metaheuristic algorithms. It contains no domain-specific concepts — scheduling, nesting, routing, etc. are defined by the user through trait implementations.
 
 ## Algorithms
 
@@ -83,7 +74,7 @@ cargo bench  # criterion benchmarks
 
 ## Dependencies
 
-- `u-optim` — Mathematical foundation (statistics, RNG)
+- [u-optim](https://github.com/iyulab/u-optim) — Mathematical primitives (statistics, RNG)
 - `rand` 0.9 — Random number generation
 - `rayon` 1.10 — Parallel computation
 - `serde` 1.0 — Serialization (optional)
@@ -91,3 +82,10 @@ cargo bench  # criterion benchmarks
 ## License
 
 MIT License — see [LICENSE](LICENSE).
+
+## Related
+
+- [u-optim](https://github.com/iyulab/u-optim) — Mathematical primitives
+- [u-geometry](https://github.com/iyulab/u-geometry) — Computational geometry
+- [u-schedule](https://github.com/iyulab/u-schedule) — Scheduling framework
+- [u-nesting](https://github.com/iyulab/U-Nesting) — 2D/3D nesting and bin packing
