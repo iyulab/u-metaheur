@@ -19,7 +19,7 @@ jobs:
       - name: Checkout path dependencies
         run: |
           mkdir -p ../../foundation
-          git clone --depth 1 https://github.com/iyulab/u-optim.git ../../foundation/u-optim
+          git clone --depth 1 https://github.com/iyulab/u-numerics.git ../../foundation/u-numerics
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --all-targets
@@ -42,7 +42,7 @@ jobs:
       - name: Checkout path dependencies
         run: |
           mkdir -p ../../foundation
-          git clone --depth 1 https://github.com/iyulab/u-optim.git ../../foundation/u-optim
+          git clone --depth 1 https://github.com/iyulab/u-numerics.git ../../foundation/u-numerics
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -61,7 +61,7 @@ jobs:
       - name: Checkout path dependencies
         run: |
           mkdir -p ../../foundation
-          git clone --depth 1 https://github.com/iyulab/u-optim.git ../../foundation/u-optim
+          git clone --depth 1 https://github.com/iyulab/u-numerics.git ../../foundation/u-numerics
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --all-targets
@@ -74,7 +74,7 @@ jobs:
       - name: Checkout path dependencies
         run: |
           mkdir -p ../../foundation
-          git clone --depth 1 https://github.com/iyulab/u-optim.git ../../foundation/u-optim
+          git clone --depth 1 https://github.com/iyulab/u-numerics.git ../../foundation/u-numerics
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo bench --no-run
@@ -87,7 +87,7 @@ jobs:
       - name: Checkout path dependencies
         run: |
           mkdir -p ../../foundation
-          git clone --depth 1 https://github.com/iyulab/u-optim.git ../../foundation/u-optim
+          git clone --depth 1 https://github.com/iyulab/u-numerics.git ../../foundation/u-numerics
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo doc --no-deps
@@ -102,7 +102,7 @@ jobs:
       - name: Checkout path dependencies
         run: |
           mkdir -p ../../foundation
-          git clone --depth 1 https://github.com/iyulab/u-optim.git ../../foundation/u-optim
+          git clone --depth 1 https://github.com/iyulab/u-numerics.git ../../foundation/u-numerics
       - name: Install cargo-audit
         run: cargo install cargo-audit
       - run: cargo audit
@@ -116,7 +116,7 @@ jobs:
       - name: Checkout path dependencies
         run: |
           mkdir -p ../../foundation
-          git clone --depth 1 https://github.com/iyulab/u-optim.git ../../foundation/u-optim
+          git clone --depth 1 https://github.com/iyulab/u-numerics.git ../../foundation/u-numerics
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools-preview

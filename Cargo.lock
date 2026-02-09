@@ -618,11 +618,11 @@ dependencies = [
  "rand",
  "rayon",
  "serde",
- "u-optim",
+ "u-numerics",
 ]
 
 [[package]]
-name = "u-optim"
+name = "u-numerics"
 version = "0.1.0"
 dependencies = [
  "rand",

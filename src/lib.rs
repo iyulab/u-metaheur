@@ -22,7 +22,7 @@
 //! # Architecture
 //!
 //! This crate sits at Layer 2 (Algorithms) in the U-Engine ecosystem,
-//! depending only on `u-optim` (Layer 1: Foundation). It contains no
+//! depending only on `u-numerics` (Layer 1: Foundation). It contains no
 //! domain-specific concepts — scheduling, nesting, routing, etc. are
 //! all defined by consumers at higher layers.
 

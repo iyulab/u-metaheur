@@ -74,7 +74,7 @@ cargo bench  # criterion benchmarks
 
 ## Dependencies
 
-- [u-optim](https://github.com/iyulab/u-optim) — Mathematical primitives (statistics, RNG)
+- [u-numerics](https://github.com/iyulab/u-numerics) — Mathematical primitives (statistics, RNG)
 - `rand` 0.9 — Random number generation
 - `rayon` 1.10 — Parallel computation
 - `serde` 1.0 — Serialization (optional)
@@ -85,7 +85,7 @@ MIT License — see [LICENSE](LICENSE).
 
 ## Related
 
-- [u-optim](https://github.com/iyulab/u-optim) — Mathematical primitives
+- [u-numerics](https://github.com/iyulab/u-numerics) — Mathematical primitives
 - [u-geometry](https://github.com/iyulab/u-geometry) — Computational geometry
 - [u-schedule](https://github.com/iyulab/u-schedule) — Scheduling framework
 - [u-nesting](https://github.com/iyulab/U-Nesting) — 2D/3D nesting and bin packing

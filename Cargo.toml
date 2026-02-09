@@ -15,7 +15,7 @@ default = []
 serde = ["dep:serde"]
 
 [dependencies]
-u-optim = { version = "0.1", path = "../../foundation/u-optim" }
+u-numerics = { version = "0.1", path = "../../foundation/u-numerics" }
 rand = "0.9"
 rayon = "1.10"
 serde = { version = "1.0", features = ["derive"], optional = true }
