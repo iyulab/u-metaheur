@@ -34,3 +34,4 @@ pub mod ga;
 pub mod sa;
 pub mod tabu;
 pub mod vns;
+pub mod wasm;
