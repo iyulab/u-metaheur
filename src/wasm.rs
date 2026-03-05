@@ -236,10 +236,7 @@ pub fn run_ga(config_json: JsValue) -> Result<JsValue, JsValue> {
         pop
     };
 
-    let mut distances: Vec<f64> = population
-        .iter()
-        .map(|t| tour_distance(t, nodes))
-        .collect();
+    let mut distances: Vec<f64> = population.iter().map(|t| tour_distance(t, nodes)).collect();
 
     let best_idx = distances
         .iter()
@@ -464,7 +461,10 @@ mod tests {
         let nodes = make_nodes();
         let tour = vec![0, 1, 2, 3];
         let d = tour_distance(&tour, &nodes);
-        assert!((d - 4.0).abs() < 1e-10, "square perimeter should be 4, got {d}");
+        assert!(
+            (d - 4.0).abs() < 1e-10,
+            "square perimeter should be 4, got {d}"
+        );
     }
 
     #[test]
