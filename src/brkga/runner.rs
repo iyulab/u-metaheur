@@ -3,6 +3,7 @@
 use super::config::BrkgaConfig;
 use super::types::BrkgaDecoder;
 use rand::Rng;
+#[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -144,16 +145,7 @@ impl BrkgaRunner {
             }
 
             // Decode non-elite individuals
-            let non_elite_slice = &mut next_gen[elite_count..];
-            if config.parallel {
-                non_elite_slice.par_iter_mut().for_each(|chr| {
-                    chr.cost = decoder.decode(&chr.keys);
-                });
-            } else {
-                for chr in non_elite_slice.iter_mut() {
-                    chr.cost = decoder.decode(&chr.keys);
-                }
-            }
+            decode_population(decoder, &mut next_gen[elite_count..], config.parallel);
 
             // Sort
             next_gen.sort_by(|a, b| {
@@ -203,14 +195,16 @@ impl BrkgaRunner {
 }
 
 fn decode_population<D: BrkgaDecoder>(decoder: &D, population: &mut [Chromosome], parallel: bool) {
+    #[cfg(feature = "parallel")]
     if parallel {
         population.par_iter_mut().for_each(|chr| {
             chr.cost = decoder.decode(&chr.keys);
         });
-    } else {
-        for chr in population.iter_mut() {
-            chr.cost = decoder.decode(&chr.keys);
-        }
+        return;
+    }
+    let _ = parallel;
+    for chr in population.iter_mut() {
+        chr.cost = decoder.decode(&chr.keys);
     }
 }
 

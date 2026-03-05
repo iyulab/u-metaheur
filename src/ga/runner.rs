@@ -6,6 +6,7 @@
 use super::config::GaConfig;
 use super::types::{Fitness, GaProblem, Individual};
 use rand::Rng;
+#[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -180,17 +181,7 @@ impl GaRunner {
             }
 
             // Evaluate new individuals (skip elites, they're already evaluated)
-            if config.parallel {
-                next_gen[elite_count..].par_iter_mut().for_each(|ind| {
-                    let f = problem.evaluate(ind);
-                    ind.set_fitness(f);
-                });
-            } else {
-                for ind in &mut next_gen[elite_count..] {
-                    let f = problem.evaluate(ind);
-                    ind.set_fitness(f);
-                }
-            }
+            evaluate_population(problem, &mut next_gen[elite_count..], config.parallel);
 
             population = next_gen;
 
@@ -262,16 +253,18 @@ fn evaluate_population<P: GaProblem>(
     population: &mut [P::Individual],
     parallel: bool,
 ) {
+    #[cfg(feature = "parallel")]
     if parallel {
         population.par_iter_mut().for_each(|ind| {
             let f = problem.evaluate(ind);
             ind.set_fitness(f);
         });
-    } else {
-        for ind in population.iter_mut() {
-            let f = problem.evaluate(ind);
-            ind.set_fitness(f);
-        }
+        return;
+    }
+    let _ = parallel;
+    for ind in population.iter_mut() {
+        let f = problem.evaluate(ind);
+        ind.set_fitness(f);
     }
 }
 
