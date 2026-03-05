@@ -29,8 +29,6 @@
 //! console.log(saResult.best_distance, saResult.best_tour);
 //! ```
 
-#![cfg(feature = "wasm")]
-
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
@@ -161,6 +159,8 @@ struct GaResult {
 
 /// Order-crossover (OX1) operator for permutation chromosomes.
 fn ox_crossover(p1: &[usize], p2: &[usize], rng: &mut WasmRng) -> Vec<usize> {
+    use std::collections::HashSet;
+
     let n = p1.len();
     let a = rng.next_usize(n);
     let b = rng.next_usize(n);
@@ -169,10 +169,12 @@ fn ox_crossover(p1: &[usize], p2: &[usize], rng: &mut WasmRng) -> Vec<usize> {
     let mut child = vec![usize::MAX; n];
     // Copy the segment [lo..=hi] from p1
     child[lo..=hi].copy_from_slice(&p1[lo..=hi]);
+    // Build a set of genes already placed for O(1) membership tests
+    let used: HashSet<usize> = child[lo..=hi].iter().copied().collect();
     // Fill remaining positions in p2 order
     let mut pos = (hi + 1) % n;
     for &gene in p2.iter().cycle().skip(hi + 1).take(n) {
-        if child.contains(&gene) {
+        if used.contains(&gene) {
             continue;
         }
         child[pos] = gene;

@@ -34,4 +34,5 @@ pub mod ga;
 pub mod sa;
 pub mod tabu;
 pub mod vns;
+#[cfg(feature = "wasm")]
 pub mod wasm;
