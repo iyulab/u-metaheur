@@ -451,20 +451,14 @@ mod tests {
 
         // T → 0: P → 0  (reject all uphill)
         let p_low_temp = (-1.0_f64 / 1e-12).exp();
-        assert!(
-            p_low_temp < 1e-9,
-            "T→0 should give P≈0, got {p_low_temp}"
-        );
+        assert!(p_low_temp < 1e-9, "T→0 should give P≈0, got {p_low_temp}");
 
         // Δ < 0 (improvement): always accept — logic check in runner
         // The runner sets accept=true for delta < 0 without calling exp().
         // We verify this invariant: exp(positive) > 1, so the formula is
         // never evaluated for improvements.
         let delta_improve = -5.0_f64;
-        assert!(
-            delta_improve < 0.0,
-            "improvement delta must be negative"
-        );
+        assert!(delta_improve < 0.0, "improvement delta must be negative");
     }
 
     #[test]

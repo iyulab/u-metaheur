@@ -507,8 +507,16 @@ mod tests {
                 seen_c2[v] += 1;
             }
             for i in 0..n {
-                assert_eq!(seen_c1[i], 1, "OX c1: value {i} appears {} times", seen_c1[i]);
-                assert_eq!(seen_c2[i], 1, "OX c2: value {i} appears {} times", seen_c2[i]);
+                assert_eq!(
+                    seen_c1[i], 1,
+                    "OX c1: value {i} appears {} times",
+                    seen_c1[i]
+                );
+                assert_eq!(
+                    seen_c2[i], 1,
+                    "OX c2: value {i} appears {} times",
+                    seen_c2[i]
+                );
             }
         }
     }
@@ -532,7 +540,10 @@ mod tests {
         assert_eq!(child[5], 5);
 
         // Must still be a valid permutation
-        assert!(is_valid_permutation(&child, 8), "manual OX child invalid: {child:?}");
+        assert!(
+            is_valid_permutation(&child, 8),
+            "manual OX child invalid: {child:?}"
+        );
     }
 
     // ---- ALNS weight update: numerical verification ----
@@ -587,11 +598,17 @@ mod tests {
         // sigma_1 > sigma_2 > sigma_3 > 0 must hold.
         // Default config: 33 > 9 > 3 (Ropke & Pisinger 2006, Table 1).
         let sigma1 = 33.0_f64; // new global best
-        let sigma2 = 9.0_f64;  // improved current
-        let sigma3 = 3.0_f64;  // accepted worse (SA)
+        let sigma2 = 9.0_f64; // improved current
+        let sigma3 = 3.0_f64; // accepted worse (SA)
 
-        assert!(sigma1 > sigma2, "sigma_1 must exceed sigma_2: {sigma1} <= {sigma2}");
-        assert!(sigma2 > sigma3, "sigma_2 must exceed sigma_3: {sigma2} <= {sigma3}");
+        assert!(
+            sigma1 > sigma2,
+            "sigma_1 must exceed sigma_2: {sigma1} <= {sigma2}"
+        );
+        assert!(
+            sigma2 > sigma3,
+            "sigma_2 must exceed sigma_3: {sigma2} <= {sigma3}"
+        );
         assert!(sigma3 > 0.0, "sigma_3 must be positive: {sigma3}");
     }
 }

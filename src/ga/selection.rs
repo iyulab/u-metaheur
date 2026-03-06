@@ -345,7 +345,10 @@ mod tests {
         let fitnesses = [1.0_f64, 5.0, 10.0, 3.0];
         let max_f = fitnesses.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
         let epsilon = 1e-10;
-        let weights: Vec<f64> = fitnesses.iter().map(|&f| (max_f - f + epsilon).max(epsilon)).collect();
+        let weights: Vec<f64> = fitnesses
+            .iter()
+            .map(|&f| (max_f - f + epsilon).max(epsilon))
+            .collect();
         let total: f64 = weights.iter().sum();
         let probs: Vec<f64> = weights.iter().map(|&w| w / total).collect();
 
@@ -392,7 +395,8 @@ mod tests {
             let deviation = (c as f64 - expected).abs() / expected;
             assert!(
                 deviation < 0.15,
-                "Tournament(1) idx {i}: count {c} deviates {:.1}% from uniform", deviation * 100.0
+                "Tournament(1) idx {i}: count {c} deviates {:.1}% from uniform",
+                deviation * 100.0
             );
         }
     }
