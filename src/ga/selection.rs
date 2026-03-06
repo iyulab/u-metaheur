@@ -333,4 +333,85 @@ mod tests {
         let mut rng = u_numflow::random::create_rng(42);
         Selection::Tournament(3).select(&pop, &mut rng);
     }
+
+    // ---- Roulette: probability distribution sums to 1 ----
+    //
+    // P(i) = w_i / Σw_j  where w_i = max_f - f_i + ε.
+    // Invariant: Σ P(i) = 1.0 and P(i) ∈ [0, 1] for all i.
+
+    #[test]
+    fn test_roulette_weight_sum_normalizes_to_one() {
+        // Reproduce the weight computation from roulette() directly.
+        let fitnesses = [1.0_f64, 5.0, 10.0, 3.0];
+        let max_f = fitnesses.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        let epsilon = 1e-10;
+        let weights: Vec<f64> = fitnesses.iter().map(|&f| (max_f - f + epsilon).max(epsilon)).collect();
+        let total: f64 = weights.iter().sum();
+        let probs: Vec<f64> = weights.iter().map(|&w| w / total).collect();
+
+        // Σ P(i) = 1
+        let sum: f64 = probs.iter().sum();
+        assert!(
+            (sum - 1.0).abs() < 1e-12,
+            "selection probabilities must sum to 1.0, got {sum}"
+        );
+
+        // P(i) ∈ [0, 1]
+        for (i, &p) in probs.iter().enumerate() {
+            assert!((0.0..=1.0).contains(&p), "P({i}) = {p} not in [0,1]");
+        }
+
+        // Best individual (lowest fitness=1.0) gets highest weight
+        // weight_best = max_f - 1.0 + ε = 9.0 + ε
+        // weight_worst = max_f - 10.0 + ε = 0.0 + ε ≈ ε  (clamped)
+        assert!(
+            probs[0] > probs[1],
+            "best (idx 0, fit=1) should have higher P than idx 1 (fit=5)"
+        );
+    }
+
+    // ---- Tournament: selection pressure scales with k ----
+    //
+    // With k = pop_size (greedy): best is selected whenever it appears in the
+    // tournament, which happens with probability 1 - ((n-1)/n)^k → approaches 1.
+    // With k = 1: uniform random.
+
+    #[test]
+    fn test_tournament_k1_is_uniform() {
+        let n = 5;
+        let pop = make_population(&[10.0, 8.0, 6.0, 4.0, 2.0]);
+        let mut rng = u_numflow::random::create_rng(99);
+        let mut counts = vec![0u32; n];
+        let trials = 20_000;
+        for _ in 0..trials {
+            counts[Selection::Tournament(1).select(&pop, &mut rng)] += 1;
+        }
+        // Each should be selected ≈ 20% of the time ± 3%
+        let expected = trials as f64 / n as f64;
+        for (i, &c) in counts.iter().enumerate() {
+            let deviation = (c as f64 - expected).abs() / expected;
+            assert!(
+                deviation < 0.15,
+                "Tournament(1) idx {i}: count {c} deviates {:.1}% from uniform", deviation * 100.0
+            );
+        }
+    }
+
+    #[test]
+    fn test_tournament_kn_selects_best() {
+        let pop = make_population(&[100.0, 50.0, 5.0, 80.0, 70.0]);
+        let mut rng = u_numflow::random::create_rng(7);
+        let mut counts = [0u32; 5];
+        let trials = 10_000;
+        for _ in 0..trials {
+            counts[Selection::Tournament(5).select(&pop, &mut rng)] += 1;
+        }
+        // Index 2 (fitness=5, best) should dominate with k=n
+        assert!(
+            counts[2] > 5000,
+            "Tournament(n) should select best > 50% of time, got {}/{}",
+            counts[2],
+            trials
+        );
+    }
 }

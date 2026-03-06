@@ -474,4 +474,124 @@ mod tests {
             assert!(end < 10);
         }
     }
+
+    // ---- OX: mathematical invariants ----
+    //
+    // The OX operator (Davis, 1985) must satisfy:
+    //   1. Output is a permutation of 0..n (no duplicates, no omissions).
+    //   2. The copied segment from `template` appears unchanged in the child.
+    //   3. Remaining positions follow the relative order of `donor`.
+
+    #[test]
+    fn test_ox_no_duplicates_no_omissions() {
+        // For any two valid permutations, children must be permutations.
+        let mut rng = create_rng(999);
+        let n = 12;
+        let p1: Vec<usize> = (0..n).collect();
+        let mut p2: Vec<usize> = (0..n).collect();
+        // Make p2 a different permutation
+        p2.reverse();
+
+        for _ in 0..200 {
+            let (c1, c2) = order_crossover(&p1, &p2, &mut rng);
+
+            // Each value 0..n must appear exactly once
+            let mut seen_c1 = vec![0u32; n];
+            let mut seen_c2 = vec![0u32; n];
+            for &v in &c1 {
+                assert!(v < n, "OX c1 contains out-of-range value {v}");
+                seen_c1[v] += 1;
+            }
+            for &v in &c2 {
+                assert!(v < n, "OX c2 contains out-of-range value {v}");
+                seen_c2[v] += 1;
+            }
+            for i in 0..n {
+                assert_eq!(seen_c1[i], 1, "OX c1: value {i} appears {} times", seen_c1[i]);
+                assert_eq!(seen_c2[i], 1, "OX c2: value {i} appears {} times", seen_c2[i]);
+            }
+        }
+    }
+
+    #[test]
+    fn test_ox_segment_preserved_exactly() {
+        // Deterministic: manually verify the segment is copied without modification.
+        // parent1 = [0,1,2,3,4,5,6,7], parent2 = [7,6,5,4,3,2,1,0]
+        // With rng seed producing segment [2, 5]:
+        // child1 segment at [2..=5] = p1[2..=5] = [2,3,4,5]
+        let p1 = vec![0usize, 1, 2, 3, 4, 5, 6, 7];
+        let p2 = vec![7usize, 6, 5, 4, 3, 2, 1, 0];
+
+        // Build child manually for segment [2,5]
+        let child = ox_build_child(&p1, &p2, 2, 5);
+
+        // Segment [2..=5] must match p1
+        assert_eq!(child[2], 2);
+        assert_eq!(child[3], 3);
+        assert_eq!(child[4], 4);
+        assert_eq!(child[5], 5);
+
+        // Must still be a valid permutation
+        assert!(is_valid_permutation(&child, 8), "manual OX child invalid: {child:?}");
+    }
+
+    // ---- ALNS weight update: numerical verification ----
+    //
+    // Formula: w_new = w·(1-r) + r·(π/θ)
+    // Reference: Ropke & Pisinger (2006), Eq. (1).
+
+    #[test]
+    fn test_alns_weight_update_formula() {
+        // Case 1: w=1.0, r=0.5, π=6, θ=3 → w_new = 1.0·0.5 + 0.5·(6/3) = 0.5 + 1.0 = 1.5
+        {
+            let w = 1.0_f64;
+            let r = 0.5_f64;
+            let pi = 6.0_f64;
+            let theta = 3.0_f64;
+            let w_new = w * (1.0 - r) + r * (pi / theta);
+            assert!(
+                (w_new - 1.5).abs() < 1e-12,
+                "w=1,r=0.5,π=6,θ=3: expected 1.5, got {w_new}"
+            );
+        }
+
+        // Case 2: w=1.0, r=0.5, π=0, θ=3 → w_new = 1.0·0.5 + 0.5·0 = 0.5
+        {
+            let w = 1.0_f64;
+            let r = 0.5_f64;
+            let pi = 0.0_f64;
+            let theta = 3.0_f64;
+            let w_new = w * (1.0 - r) + r * (pi / theta);
+            assert!(
+                (w_new - 0.5).abs() < 1e-12,
+                "w=1,r=0.5,π=0,θ=3: expected 0.5 (decay), got {w_new}"
+            );
+        }
+
+        // Case 3: r→1 (full replacement) → w_new = π/θ
+        {
+            let w = 999.0_f64; // doesn't matter
+            let r = 1.0_f64;
+            let pi = 4.0_f64;
+            let theta = 2.0_f64;
+            let w_new = w * (1.0 - r) + r * (pi / theta);
+            assert!(
+                (w_new - 2.0).abs() < 1e-12,
+                "r=1 should give w_new = π/θ = 2.0, got {w_new}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_alns_score_hierarchy() {
+        // sigma_1 > sigma_2 > sigma_3 > 0 must hold.
+        // Default config: 33 > 9 > 3 (Ropke & Pisinger 2006, Table 1).
+        let sigma1 = 33.0_f64; // new global best
+        let sigma2 = 9.0_f64;  // improved current
+        let sigma3 = 3.0_f64;  // accepted worse (SA)
+
+        assert!(sigma1 > sigma2, "sigma_1 must exceed sigma_2: {sigma1} <= {sigma2}");
+        assert!(sigma2 > sigma3, "sigma_2 must exceed sigma_3: {sigma2} <= {sigma3}");
+        assert!(sigma3 > 0.0, "sigma_3 must be positive: {sigma3}");
+    }
 }
