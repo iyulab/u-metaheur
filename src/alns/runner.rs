@@ -490,7 +490,8 @@ mod tests {
         });
 
         let result =
-            AlnsRunner::run_with_cancel(&problem, &destroy_ops, &repair_ops, &config, Some(cancel)).unwrap();
+            AlnsRunner::run_with_cancel(&problem, &destroy_ops, &repair_ops, &config, Some(cancel))
+                .unwrap();
         assert!(result.cancelled);
     }
 

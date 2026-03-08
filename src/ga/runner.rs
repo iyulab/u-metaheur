@@ -80,7 +80,10 @@ impl GaRunner {
     ///
     /// # Errors
     /// Returns an error if the configuration is invalid.
-    pub fn run<P: GaProblem>(problem: &P, config: &GaConfig) -> Result<GaResult<P::Individual>, String> {
+    pub fn run<P: GaProblem>(
+        problem: &P,
+        config: &GaConfig,
+    ) -> Result<GaResult<P::Individual>, String> {
         Self::run_with_cancel(problem, config, None)
     }
 
