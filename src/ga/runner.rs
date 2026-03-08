@@ -70,7 +70,7 @@ pub struct GaResult<I: Individual> {
 /// ```ignore
 /// let problem = MyProblem::new();
 /// let config = GaConfig::default().with_seed(42);
-/// let result = GaRunner::run(&problem, &config);
+/// let result = GaRunner::run(&problem, &config)?;
 /// println!("Best fitness: {:?}", result.best_fitness);
 /// ```
 pub struct GaRunner;
@@ -78,10 +78,9 @@ pub struct GaRunner;
 impl GaRunner {
     /// Runs the GA optimization.
     ///
-    /// # Panics
-    /// Panics if the configuration is invalid (call [`GaConfig::validate`] first
-    /// to get a descriptive error).
-    pub fn run<P: GaProblem>(problem: &P, config: &GaConfig) -> GaResult<P::Individual> {
+    /// # Errors
+    /// Returns an error if the configuration is invalid.
+    pub fn run<P: GaProblem>(problem: &P, config: &GaConfig) -> Result<GaResult<P::Individual>, String> {
         Self::run_with_cancel(problem, config, None)
     }
 
@@ -90,12 +89,15 @@ impl GaRunner {
     /// If `cancel` is `Some` and the flag is set to `true`, the GA will
     /// stop at the end of the current generation and return the best
     /// solution found so far.
+    ///
+    /// # Errors
+    /// Returns an error if the configuration is invalid.
     pub fn run_with_cancel<P: GaProblem>(
         problem: &P,
         config: &GaConfig,
         cancel: Option<Arc<AtomicBool>>,
-    ) -> GaResult<P::Individual> {
-        config.validate().expect("invalid GaConfig");
+    ) -> Result<GaResult<P::Individual>, String> {
+        config.validate()?;
 
         let mut rng = match config.seed {
             Some(seed) => create_rng(seed),
@@ -217,7 +219,7 @@ impl GaRunner {
 
             // Stagnation check
             if config.stagnation_limit > 0 && stagnation_counter >= config.stagnation_limit {
-                return GaResult {
+                return Ok(GaResult {
                     best_fitness: best.fitness(),
                     best,
                     generations: gen + 1,
@@ -226,11 +228,11 @@ impl GaRunner {
                     timed_out: false,
                     fitness_history,
                     generation_stats,
-                };
+                });
             }
         }
 
-        GaResult {
+        Ok(GaResult {
             best_fitness: best.fitness(),
             best,
             generations: if cancelled || timed_out {
@@ -243,7 +245,7 @@ impl GaRunner {
             timed_out,
             fitness_history,
             generation_stats,
-        }
+        })
     }
 }
 
@@ -393,7 +395,7 @@ mod tests {
             .with_seed(42)
             .with_parallel(false);
 
-        let result = GaRunner::run(&problem, &config);
+        let result = GaRunner::run(&problem, &config).unwrap();
 
         // Should find near-optimal solution (all true = fitness -20)
         assert!(
@@ -413,7 +415,7 @@ mod tests {
             .with_seed(42)
             .with_parallel(false);
 
-        let result = GaRunner::run(&problem, &config);
+        let result = GaRunner::run(&problem, &config).unwrap();
 
         // Should stop early due to convergence
         assert!(
@@ -441,7 +443,7 @@ mod tests {
             cancel_clone.store(true, Ordering::Relaxed);
         });
 
-        let result = GaRunner::run_with_cancel(&problem, &config, Some(cancel));
+        let result = GaRunner::run_with_cancel(&problem, &config, Some(cancel)).unwrap();
 
         assert!(result.cancelled, "expected cancelled result");
         assert!(result.generations < 10000, "should have stopped early");
@@ -457,7 +459,7 @@ mod tests {
             .with_seed(42)
             .with_parallel(false);
 
-        let result = GaRunner::run(&problem, &config);
+        let result = GaRunner::run(&problem, &config).unwrap();
 
         // Fitness should never get worse across generations
         for window in result.fitness_history.windows(2) {
@@ -480,7 +482,7 @@ mod tests {
             .with_seed(42)
             .with_parallel(false);
 
-        let result = GaRunner::run(&problem, &config);
+        let result = GaRunner::run(&problem, &config).unwrap();
 
         // History should have max_generations + 1 entries (initial + each gen)
         assert_eq!(result.fitness_history.len(), 31);
@@ -502,7 +504,7 @@ mod tests {
                 .with_seed(42)
                 .with_parallel(false);
 
-            let result = GaRunner::run(&problem, &config);
+            let result = GaRunner::run(&problem, &config).unwrap();
 
             assert!(
                 result.best_fitness < 0.0,
@@ -525,7 +527,7 @@ mod tests {
             .with_seed(42)
             .with_parallel(true);
 
-        let result = GaRunner::run(&problem, &config);
+        let result = GaRunner::run(&problem, &config).unwrap();
 
         assert!(
             result.best_fitness <= -10.0,
@@ -619,7 +621,7 @@ mod tests {
             .with_seed(42)
             .with_parallel(false);
 
-        let result = GaRunner::run(&problem, &config);
+        let result = GaRunner::run(&problem, &config).unwrap();
 
         // Should get close to 0 (the global minimum)
         assert!(
@@ -659,7 +661,7 @@ mod tests {
             .with_seed(42)
             .with_parallel(false);
 
-        let result = GaRunner::run(&problem, &config);
+        let result = GaRunner::run(&problem, &config).unwrap();
 
         // Should complete without error
         assert!(result.generations > 0);
@@ -677,7 +679,7 @@ mod tests {
             .with_seed(42)
             .with_parallel(false);
 
-        let result = GaRunner::run(&problem, &config);
+        let result = GaRunner::run(&problem, &config).unwrap();
 
         assert!(result.timed_out, "expected timed_out = true");
         assert!(!result.cancelled);
@@ -700,7 +702,7 @@ mod tests {
             .with_parallel(false);
         // time_limit_ms is None by default
 
-        let result = GaRunner::run(&problem, &config);
+        let result = GaRunner::run(&problem, &config).unwrap();
 
         assert!(!result.timed_out);
         assert_eq!(result.generations, 10);
@@ -719,7 +721,7 @@ mod tests {
             .with_seed(42)
             .with_parallel(false);
 
-        let result = GaRunner::run(&problem, &config);
+        let result = GaRunner::run(&problem, &config).unwrap();
 
         // Should stagnate quickly because 50% improvement per generation is unlikely
         assert!(
@@ -741,7 +743,7 @@ mod tests {
             .with_seed(42)
             .with_parallel(false);
 
-        let result = GaRunner::run(&problem, &config);
+        let result = GaRunner::run(&problem, &config).unwrap();
 
         // Should find optimal (all true) or stagnate after finding near-optimal
         assert!(result.best_fitness <= -3.0);
@@ -758,7 +760,7 @@ mod tests {
             .with_seed(42)
             .with_parallel(false);
 
-        let result = GaRunner::run(&problem, &config);
+        let result = GaRunner::run(&problem, &config).unwrap();
 
         assert!(result.timed_out);
         // Best fitness should be valid (not infinity)
@@ -782,7 +784,7 @@ mod tests {
             .with_seed(42)
             .with_parallel(false);
 
-        let result = GaRunner::run(&problem, &config);
+        let result = GaRunner::run(&problem, &config).unwrap();
 
         // Initial + 30 generations = 31 stats entries
         assert_eq!(result.generation_stats.len(), 31);
@@ -800,7 +802,7 @@ mod tests {
             .with_seed(42)
             .with_parallel(false);
 
-        let result = GaRunner::run(&problem, &config);
+        let result = GaRunner::run(&problem, &config).unwrap();
 
         for stats in &result.generation_stats {
             // best <= mean <= worst
@@ -838,7 +840,7 @@ mod tests {
             .with_seed(42)
             .with_parallel(false);
 
-        let result = GaRunner::run(&problem, &config);
+        let result = GaRunner::run(&problem, &config).unwrap();
 
         // Stats count should match fitness_history
         assert_eq!(result.generation_stats.len(), result.fitness_history.len());

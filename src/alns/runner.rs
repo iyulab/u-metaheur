@@ -106,12 +106,15 @@ impl AlnsRunner {
     /// * `destroy_ops` - Slice of destroy operators
     /// * `repair_ops` - Slice of repair operators
     /// * `config` - Algorithm configuration
+    ///
+    /// # Errors
+    /// Returns an error if the configuration is invalid or operator slices are empty.
     pub fn run<P, D, R>(
         problem: &P,
         destroy_ops: &[D],
         repair_ops: &[R],
         config: &AlnsConfig,
-    ) -> AlnsResult<P::Solution>
+    ) -> Result<AlnsResult<P::Solution>, String>
     where
         P: AlnsProblem,
         D: DestroyOperator<P::Solution>,
@@ -121,27 +124,28 @@ impl AlnsRunner {
     }
 
     /// Runs ALNS with an optional cancellation token.
+    ///
+    /// # Errors
+    /// Returns an error if the configuration is invalid or operator slices are empty.
     pub fn run_with_cancel<P, D, RP>(
         problem: &P,
         destroy_ops: &[D],
         repair_ops: &[RP],
         config: &AlnsConfig,
         cancel: Option<Arc<AtomicBool>>,
-    ) -> AlnsResult<P::Solution>
+    ) -> Result<AlnsResult<P::Solution>, String>
     where
         P: AlnsProblem,
         D: DestroyOperator<P::Solution>,
         RP: RepairOperator<P::Solution>,
     {
-        config.validate().expect("invalid AlnsConfig");
-        assert!(
-            !destroy_ops.is_empty(),
-            "at least one destroy operator required"
-        );
-        assert!(
-            !repair_ops.is_empty(),
-            "at least one repair operator required"
-        );
+        config.validate()?;
+        if destroy_ops.is_empty() {
+            return Err("at least one destroy operator required".to_string());
+        }
+        if repair_ops.is_empty() {
+            return Err("at least one repair operator required".to_string());
+        }
 
         let mut rng = match config.seed {
             Some(seed) => create_rng(seed),
@@ -249,7 +253,7 @@ impl AlnsRunner {
             cost_history.push(best_cost);
         }
 
-        AlnsResult {
+        Ok(AlnsResult {
             best,
             best_cost,
             iterations: if cancelled {
@@ -263,7 +267,7 @@ impl AlnsRunner {
             destroy_weights: destroy_stats.iter().map(|s| s.weight).collect(),
             repair_weights: repair_stats.iter().map(|s| s.weight).collect(),
             cost_history,
-        }
+        })
     }
 }
 
@@ -426,7 +430,7 @@ mod tests {
 
         let config = AlnsConfig::default().with_max_iterations(500).with_seed(42);
 
-        let result = AlnsRunner::run(&problem, &destroy_ops, &repair_ops, &config);
+        let result = AlnsRunner::run(&problem, &destroy_ops, &repair_ops, &config).unwrap();
 
         // With FullRepair available, should find all-true (cost = -20)
         assert!(
@@ -455,7 +459,7 @@ mod tests {
             .with_reaction_factor(0.5)
             .with_seed(42);
 
-        let result = AlnsRunner::run(&problem, &destroy_ops, &repair_ops, &config);
+        let result = AlnsRunner::run(&problem, &destroy_ops, &repair_ops, &config).unwrap();
 
         assert_eq!(result.destroy_weights.len(), 2);
         assert_eq!(result.repair_weights.len(), 2);
@@ -486,7 +490,7 @@ mod tests {
         });
 
         let result =
-            AlnsRunner::run_with_cancel(&problem, &destroy_ops, &repair_ops, &config, Some(cancel));
+            AlnsRunner::run_with_cancel(&problem, &destroy_ops, &repair_ops, &config, Some(cancel)).unwrap();
         assert!(result.cancelled);
     }
 
@@ -501,7 +505,7 @@ mod tests {
             .with_segment_length(50)
             .with_seed(42);
 
-        let result = AlnsRunner::run(&problem, &destroy_ops, &repair_ops, &config);
+        let result = AlnsRunner::run(&problem, &destroy_ops, &repair_ops, &config).unwrap();
 
         for window in result.cost_history.windows(2) {
             assert!(
@@ -521,7 +525,7 @@ mod tests {
 
         let config = AlnsConfig::default().with_max_iterations(200).with_seed(42);
 
-        let result = AlnsRunner::run(&problem, &destroy_ops, &repair_ops, &config);
+        let result = AlnsRunner::run(&problem, &destroy_ops, &repair_ops, &config).unwrap();
 
         assert!(result.improvements > 0, "expected at least one improvement");
     }
@@ -589,7 +593,7 @@ mod tests {
             .with_destroy_degree(0.3, 0.8)
             .with_seed(42);
 
-        let result = AlnsRunner::run(&problem, &destroy_ops, &repair_ops, &config);
+        let result = AlnsRunner::run(&problem, &destroy_ops, &repair_ops, &config).unwrap();
 
         assert!(
             result.best_cost < 10.0,

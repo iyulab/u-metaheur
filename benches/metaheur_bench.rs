@@ -129,7 +129,7 @@ fn bench_ga_sphere(c: &mut Criterion) {
             &(problem, config),
             |b, (p, c)| {
                 b.iter(|| {
-                    let result = GaRunner::run(black_box(p), black_box(c));
+                    let result = GaRunner::run(black_box(p), black_box(c)).unwrap();
                     black_box(result)
                 })
             },
@@ -178,7 +178,7 @@ fn bench_brkga_onemax(c: &mut Criterion) {
             &(decoder, config),
             |b, (d, c)| {
                 b.iter(|| {
-                    let result = BrkgaRunner::run(black_box(d), black_box(c));
+                    let result = BrkgaRunner::run(black_box(d), black_box(c)).unwrap();
                     black_box(result)
                 })
             },

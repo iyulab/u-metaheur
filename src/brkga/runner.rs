@@ -43,17 +43,23 @@ pub struct BrkgaRunner;
 
 impl BrkgaRunner {
     /// Runs BRKGA optimization.
-    pub fn run<D: BrkgaDecoder>(decoder: &D, config: &BrkgaConfig) -> BrkgaResult {
+    ///
+    /// # Errors
+    /// Returns an error if the configuration is invalid.
+    pub fn run<D: BrkgaDecoder>(decoder: &D, config: &BrkgaConfig) -> Result<BrkgaResult, String> {
         Self::run_with_cancel(decoder, config, None)
     }
 
     /// Runs BRKGA with an optional cancellation token.
+    ///
+    /// # Errors
+    /// Returns an error if the configuration is invalid.
     pub fn run_with_cancel<D: BrkgaDecoder>(
         decoder: &D,
         config: &BrkgaConfig,
         cancel: Option<Arc<AtomicBool>>,
-    ) -> BrkgaResult {
-        config.validate().expect("invalid BrkgaConfig");
+    ) -> Result<BrkgaResult, String> {
+        config.validate()?;
 
         let mut rng = match config.seed {
             Some(seed) => create_rng(seed),
@@ -168,18 +174,18 @@ impl BrkgaRunner {
 
             // Stagnation check
             if config.stagnation_limit > 0 && stagnation_counter >= config.stagnation_limit {
-                return BrkgaResult {
+                return Ok(BrkgaResult {
                     best_keys: best.keys,
                     best_cost: best.cost,
                     generations: cost_history.len() - 1,
                     stagnated: true,
                     cancelled: false,
                     cost_history,
-                };
+                });
             }
         }
 
-        BrkgaResult {
+        Ok(BrkgaResult {
             best_keys: best.keys,
             best_cost: best.cost,
             generations: if cancelled {
@@ -190,7 +196,7 @@ impl BrkgaRunner {
             stagnated: false,
             cancelled,
             cost_history,
-        }
+        })
     }
 }
 
@@ -245,7 +251,7 @@ mod tests {
             .with_seed(42)
             .with_parallel(false);
 
-        let result = BrkgaRunner::run(&decoder, &config);
+        let result = BrkgaRunner::run(&decoder, &config).unwrap();
 
         assert!(
             result.best_cost <= 2.0,
@@ -277,7 +283,7 @@ mod tests {
             .with_seed(42)
             .with_parallel(false);
 
-        let result = BrkgaRunner::run(&decoder, &config);
+        let result = BrkgaRunner::run(&decoder, &config).unwrap();
 
         assert!(
             result.best_cost <= -15.0,
@@ -296,7 +302,7 @@ mod tests {
             .with_seed(42)
             .with_parallel(false);
 
-        let result = BrkgaRunner::run(&decoder, &config);
+        let result = BrkgaRunner::run(&decoder, &config).unwrap();
 
         assert!(
             result.stagnated || result.generations < 1000,
@@ -321,7 +327,7 @@ mod tests {
             cancel_clone.store(true, Ordering::Relaxed);
         });
 
-        let result = BrkgaRunner::run_with_cancel(&decoder, &config, Some(cancel));
+        let result = BrkgaRunner::run_with_cancel(&decoder, &config, Some(cancel)).unwrap();
         assert!(result.cancelled);
     }
 
@@ -335,7 +341,7 @@ mod tests {
             .with_seed(42)
             .with_parallel(false);
 
-        let result = BrkgaRunner::run(&decoder, &config);
+        let result = BrkgaRunner::run(&decoder, &config).unwrap();
 
         for window in result.cost_history.windows(2) {
             assert!(
@@ -356,7 +362,7 @@ mod tests {
             .with_seed(42)
             .with_parallel(true);
 
-        let result = BrkgaRunner::run(&decoder, &config);
+        let result = BrkgaRunner::run(&decoder, &config).unwrap();
 
         assert!(
             result.best_cost <= -10.0,
@@ -389,7 +395,7 @@ mod tests {
             .with_seed(42)
             .with_parallel(false);
 
-        let result = BrkgaRunner::run(&decoder, &config);
+        let result = BrkgaRunner::run(&decoder, &config).unwrap();
 
         // With seeded population, should find near-optimal quickly
         assert!(
