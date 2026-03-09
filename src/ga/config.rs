@@ -272,6 +272,9 @@ impl GaConfig {
             return Err("max_generations must be at least 1".into());
         }
         let elite_count = (self.population_size as f64 * self.elite_ratio) as usize;
+        if elite_count < 1 {
+            return Err("elite_ratio too low: at least 1 elite required".into());
+        }
         if elite_count >= self.population_size {
             return Err("elite_ratio too high: elites fill entire population".into());
         }
@@ -352,6 +355,20 @@ mod tests {
             .with_population_size(10)
             .with_elite_ratio(1.0);
         assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_elite_too_low() {
+        // population_size=2, elite_ratio=0.1 → elite_count = (2 * 0.1) as usize = 0
+        // This must fail: zero elites causes empty population in the evolutionary loop.
+        let config = GaConfig::default()
+            .with_population_size(2)
+            .with_elite_ratio(0.1);
+        let err = config.validate().unwrap_err();
+        assert!(
+            err.contains("elite_ratio too low"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]

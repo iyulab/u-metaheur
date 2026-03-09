@@ -79,13 +79,11 @@ impl Default for Selection {
 impl Selection {
     /// Select a parent index from the population.
     ///
-    /// # Panics
-    /// Panics if `population` is empty.
+    /// Returns `0` if the population is empty (defensive guard for WASM safety).
     pub fn select<I: Individual, R: Rng>(&self, population: &[I], rng: &mut R) -> usize {
-        assert!(
-            !population.is_empty(),
-            "cannot select from empty population"
-        );
+        if population.is_empty() {
+            return 0;
+        }
 
         match self {
             Selection::Tournament(k) => tournament(population, *k, rng),
@@ -327,11 +325,13 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "cannot select from empty population")]
-    fn test_empty_population_panics() {
+    fn test_empty_population_returns_zero() {
         let pop: Vec<TestInd> = vec![];
         let mut rng = u_numflow::random::create_rng(42);
-        Selection::Tournament(3).select(&pop, &mut rng);
+        // Defensive guard: returns 0 instead of panicking (WASM safety)
+        assert_eq!(Selection::Tournament(3).select(&pop, &mut rng), 0);
+        assert_eq!(Selection::Roulette.select(&pop, &mut rng), 0);
+        assert_eq!(Selection::Rank.select(&pop, &mut rng), 0);
     }
 
     // ---- Roulette: probability distribution sums to 1 ----

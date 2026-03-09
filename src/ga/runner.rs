@@ -10,6 +10,7 @@ use rand::Rng;
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 use u_numflow::random::create_rng;
 
@@ -122,8 +123,10 @@ impl GaRunner {
 
         let mut stagnation_counter = 0usize;
         let mut cancelled = false;
+        #[allow(unused_mut)]
         let mut timed_out = false;
         let mut generation_stats = Vec::with_capacity(config.max_generations);
+        #[cfg(not(target_arch = "wasm32"))]
         let start_time = Instant::now();
 
         // Record initial population stats
@@ -139,7 +142,8 @@ impl GaRunner {
                 }
             }
 
-            // Check time limit
+            // Check time limit (not available on WASM — no std::time::Instant)
+            #[cfg(not(target_arch = "wasm32"))]
             if let Some(limit_ms) = config.time_limit_ms {
                 if start_time.elapsed().as_millis() as u64 >= limit_ms {
                     timed_out = true;
