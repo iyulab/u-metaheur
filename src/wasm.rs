@@ -3,7 +3,8 @@
 //! Exposes TSP (Travelling Salesman Problem) solvers to JavaScript via
 //! `wasm-bindgen`. Only compiled when the `wasm` feature is enabled.
 //!
-//! Both `run_ga` and `run_sa` accept a JSON config and return a JSON result.
+//! Both `run_ga` and `run_sa` accept a native JS config object (not a JSON
+//! string) and return a plain JS result object.
 //! They use self-contained TSP implementations to avoid WASM incompatibilities
 //! in the generic runners (e.g. `std::time::Instant`).
 //!
@@ -35,6 +36,18 @@ use wasm_bindgen::prelude::*;
 // ============================================================================
 // Shared utilities
 // ============================================================================
+
+/// Deserialize a native JS value, rejecting JSON strings with an actionable
+/// message and prefixing the offending parameter name to any serde error.
+fn from_js<T: serde::de::DeserializeOwned>(value: JsValue, param: &str) -> Result<T, JsValue> {
+    if value.as_string().is_some() {
+        return Err(JsValue::from_str(&format!(
+            "{param}: expected a native JS object/array, got a string — \
+             pass the value directly, not JSON.stringify(...)"
+        )));
+    }
+    serde_wasm_bindgen::from_value(value).map_err(|e| JsValue::from_str(&format!("{param}: {e}")))
+}
 
 /// Euclidean distance between two 2-D nodes.
 fn node_dist(a: &[f64; 2], b: &[f64; 2]) -> f64 {
@@ -197,7 +210,7 @@ fn swap_mutate(tour: &mut [usize], rng: &mut WasmRng) {
 /// Runs a Genetic Algorithm for TSP.
 ///
 /// # Arguments
-/// `config_json` — JS object with fields:
+/// `config` — native JS object with fields:
 /// - `nodes`: `[[x, y], ...]` (required)
 /// - `population_size`: integer (default 100)
 /// - `generations`: integer (default 200)
@@ -206,9 +219,8 @@ fn swap_mutate(tour: &mut [usize], rng: &mut WasmRng) {
 /// # Returns
 /// JS object with `best_distance`, `best_tour`, `generations_run`.
 #[wasm_bindgen]
-pub fn run_ga(config_json: JsValue) -> Result<JsValue, JsValue> {
-    let config: GaConfig = serde_wasm_bindgen::from_value(config_json)
-        .map_err(|e| JsValue::from_str(&format!("invalid config: {e}")))?;
+pub fn run_ga(config: JsValue) -> Result<JsValue, JsValue> {
+    let config: GaConfig = from_js(config, "config")?;
 
     let n = config.nodes.len();
     if n < 2 {
@@ -354,7 +366,7 @@ struct SaResult {
 /// Neighbour move: 2-opt segment reversal between two random positions.
 ///
 /// # Arguments
-/// `config_json` — JS object with fields:
+/// `config` — native JS object with fields:
 /// - `nodes`: `[[x, y], ...]` (required)
 /// - `initial_temp`: float (default 1000.0)
 /// - `cooling_rate`: float in (0, 1) (default 0.995)
@@ -363,9 +375,8 @@ struct SaResult {
 /// # Returns
 /// JS object with `best_distance`, `best_tour`, `iterations_run`.
 #[wasm_bindgen]
-pub fn run_sa(config_json: JsValue) -> Result<JsValue, JsValue> {
-    let config: SaConfig = serde_wasm_bindgen::from_value(config_json)
-        .map_err(|e| JsValue::from_str(&format!("invalid config: {e}")))?;
+pub fn run_sa(config: JsValue) -> Result<JsValue, JsValue> {
+    let config: SaConfig = from_js(config, "config")?;
 
     let n = config.nodes.len();
     if n < 2 {
