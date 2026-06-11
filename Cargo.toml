@@ -1,6 +1,6 @@
 [package]
 name = "u-metaheur"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2021"
 authors = ["iyulab"]
 license = "MIT"
@@ -17,7 +17,7 @@ crate-type = ["cdylib", "rlib"]
 default = []
 serde = ["dep:serde"]
 parallel = ["dep:rayon"]
-wasm = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen", "dep:serde"]
+wasm = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen", "dep:serde_json", "dep:serde"]
 
 [dependencies]
 u-numflow = { version = "0.2", path = "../../foundation/u-numflow" }
@@ -26,11 +26,13 @@ rayon = { version = "1.10", optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
 serde-wasm-bindgen = { version = "0.6", optional = true }
+serde_json = { version = "1.0", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [dev-dependencies]
+serde_json = "1.0"
 proptest = "1.4"
 criterion = "0.5"
 

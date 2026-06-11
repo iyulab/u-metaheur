@@ -46,7 +46,12 @@ fn from_js<T: serde::de::DeserializeOwned>(value: JsValue, param: &str) -> Resul
              pass the value directly, not JSON.stringify(...)"
         )));
     }
-    serde_wasm_bindgen::from_value(value).map_err(|e| JsValue::from_str(&format!("{param}: {e}")))
+    // serde-wasm-bindgen reads only a struct's declared fields from a JS
+    // object, so `deny_unknown_fields` never sees extra keys. Round-trip
+    // through serde_json::Value so the strict wire schema is enforced.
+    let json: serde_json::Value = serde_wasm_bindgen::from_value(value)
+        .map_err(|e| JsValue::from_str(&format!("{param}: {e}")))?;
+    serde_json::from_value(json).map_err(|e| JsValue::from_str(&format!("{param}: {e}")))
 }
 
 /// Euclidean distance between two 2-D nodes.
@@ -143,6 +148,7 @@ fn shuffle(slice: &mut [usize], rng: &mut WasmRng) {
 // ============================================================================
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct GaConfig {
     nodes: Vec<[f64; 2]>,
     #[serde(default = "default_pop_size")]
@@ -333,6 +339,7 @@ fn tournament_select(distances: &[f64], k: usize, rng: &mut WasmRng) -> usize {
 // ============================================================================
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SaConfig {
     nodes: Vec<[f64; 2]>,
     #[serde(default = "default_temp")]
@@ -519,5 +526,33 @@ mod tests {
     #[test]
     fn test_tour_distance_empty() {
         assert_eq!(tour_distance(&[], &[]), 0.0);
+    }
+}
+
+// ── Wire-schema strictness tests ─────────────────────────────────────
+
+#[cfg(test)]
+mod dto_strictness_tests {
+    use serde_json::json;
+
+    fn assert_rejects_unknown<T: serde::de::DeserializeOwned>(v: serde_json::Value) {
+        match serde_json::from_value::<T>(v) {
+            Ok(_) => panic!("unknown key must be rejected"),
+            Err(e) => assert!(e.to_string().contains("unknown field"), "{e}"),
+        }
+    }
+
+    #[test]
+    fn ga_config_rejects_unknown_keys() {
+        assert_rejects_unknown::<super::GaConfig>(
+            json!({ "nodes": [[0.0, 0.0], [1.0, 1.0]], "populationSize": 10 }),
+        );
+    }
+
+    #[test]
+    fn sa_config_rejects_unknown_keys() {
+        assert_rejects_unknown::<super::SaConfig>(
+            json!({ "nodes": [[0.0, 0.0], [1.0, 1.0]], "cooling": 0.9 }),
+        );
     }
 }

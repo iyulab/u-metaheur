@@ -8,6 +8,15 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-12
+
+### Changed — BREAKING (WASM)
+
+- WASM config objects (`run_ga`, `run_sa`) now **reject unknown keys** with an
+  explicit `unknown field` error instead of silently ignoring them
+  (`serde(deny_unknown_fields)`). Typos and unsupported options previously
+  failed silently; remove any extra keys from config objects when upgrading.
+
 ## [0.2.1] - 2026-06-10
 
 ### Changed
