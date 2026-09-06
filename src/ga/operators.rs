@@ -21,7 +21,7 @@
 //! - Goldberg & Lingle (1985), "Alleles, Loci, and the Traveling Salesman Problem"
 //! - Cicirello (2023), "Genetic Operators for Permutation Representation"
 
-use rand::Rng;
+use rand::{Rng, RngExt};
 
 // ============================================================================
 // Crossover operators

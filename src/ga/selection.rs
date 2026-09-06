@@ -11,7 +11,7 @@
 //!   Used in Genetic Algorithms"
 
 use super::types::{Fitness, Individual};
-use rand::Rng;
+use rand::{Rng, RngExt};
 
 /// Selection strategy for choosing parents.
 ///

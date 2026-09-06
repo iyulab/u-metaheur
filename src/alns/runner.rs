@@ -2,7 +2,7 @@
 
 use super::config::AlnsConfig;
 use super::types::{AlnsProblem, DestroyOperator, RepairOperator};
-use rand::Rng;
+use rand::{Rng, RngExt};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use u_numflow::random::create_rng;

@@ -5,7 +5,7 @@
 
 use super::config::GaConfig;
 use super::types::{Fitness, GaProblem, Individual};
-use rand::Rng;
+use rand::RngExt;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -320,6 +320,7 @@ fn compute_generation_stats<I: Individual>(population: &[I], generation: usize) 
 mod tests {
     use super::*;
     use crate::ga::{GaConfig, Selection};
+    use rand::Rng;
 
     // ---- OneMax problem: maximize sum of bits (minimize negative sum) ----
 

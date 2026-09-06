@@ -2,7 +2,7 @@
 
 use super::config::{CoolingSchedule, SaConfig};
 use super::types::SaProblem;
-use rand::Rng;
+use rand::RngExt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use u_numflow::random::create_rng;
@@ -200,6 +200,7 @@ fn compute_linear_steps(config: &SaConfig) -> usize {
 mod tests {
     use super::*;
     use crate::sa::{CoolingSchedule, SaConfig};
+    use rand::Rng;
 
     // ---- Quadratic minimization: f(x) = x^2, minimum at 0 ----
 

@@ -4,7 +4,7 @@
 //! pure algorithm overhead independent of any domain.
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use rand::Rng;
+use rand::{Rng, RngExt};
 use u_metaheur::brkga::{BrkgaConfig, BrkgaDecoder, BrkgaRunner};
 use u_metaheur::ga::{GaConfig, GaProblem, GaRunner, Individual};
 use u_metaheur::sa::{SaConfig, SaProblem, SaRunner};

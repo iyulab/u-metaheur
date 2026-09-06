@@ -45,7 +45,7 @@ impl VnsRunner {
     ///
     /// ```no_run
     /// use u_metaheur::vns::{VnsProblem, VnsConfig, VnsRunner};
-    /// use rand::Rng;
+    /// use rand::{Rng, RngExt};
     ///
     /// struct MyProblem;
     /// impl VnsProblem for MyProblem {
@@ -127,7 +127,7 @@ impl VnsRunner {
 mod tests {
     use super::*;
     use crate::vns::{VnsConfig, VnsProblem};
-    use rand::Rng;
+    use rand::{Rng, RngExt};
 
     // ---- Discretized quadratic: f(x) = (x - 10)^2, min at x = 10 ----
 

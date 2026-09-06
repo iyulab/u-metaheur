@@ -2,7 +2,7 @@
 
 use super::config::BrkgaConfig;
 use super::types::BrkgaDecoder;
-use rand::Rng;
+use rand::RngExt;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -218,6 +218,7 @@ fn decode_population<D: BrkgaDecoder>(decoder: &D, population: &mut [Chromosome]
 mod tests {
     use super::*;
     use crate::brkga::BrkgaConfig;
+    use rand::Rng;
 
     // ---- Permutation sorting: sort keys, cost = number of inversions ----
 

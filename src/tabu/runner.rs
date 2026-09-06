@@ -46,7 +46,7 @@ impl TabuRunner {
     ///
     /// ```no_run
     /// use u_metaheur::tabu::{TabuProblem, TabuConfig, TabuRunner, TabuMove};
-    /// use rand::Rng;
+    /// use rand::{Rng, RngExt};
     ///
     /// struct MyProblem;
     /// impl TabuProblem for MyProblem {
@@ -167,7 +167,7 @@ impl TabuRunner {
 mod tests {
     use super::*;
     use crate::tabu::{TabuConfig, TabuMove, TabuProblem};
-    use rand::Rng;
+    use rand::{Rng, RngExt};
 
     // ---- Quadratic minimization: f(x) = (x - 5)^2, minimum at x = 5 ----
 
