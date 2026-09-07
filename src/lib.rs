@@ -21,8 +21,8 @@
 //!
 //! # Architecture
 //!
-//! This crate sits at Layer 2 (Algorithms) in the U-Engine ecosystem,
-//! depending only on `u-numflow` (Layer 1: Foundation). It contains no
+//! This crate is a general-purpose optimization layer, depending only on
+//! `u-numflow` for its mathematical primitives. It contains no
 //! domain-specific concepts — scheduling, nesting, routing, etc. are
 //! all defined by consumers at higher layers.
 
