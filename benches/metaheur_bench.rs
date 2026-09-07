@@ -3,8 +3,9 @@
 //! Uses synthetic problems (Sphere function, OneMax) to measure
 //! pure algorithm overhead independent of any domain.
 
-use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use rand::{Rng, RngExt};
+use std::hint::black_box;
 use u_metaheur::brkga::{BrkgaConfig, BrkgaDecoder, BrkgaRunner};
 use u_metaheur::ga::{GaConfig, GaProblem, GaRunner, Individual};
 use u_metaheur::sa::{SaConfig, SaProblem, SaRunner};
