@@ -8,6 +8,32 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-07
+
+### Changed (breaking)
+
+- **`rand` is now 0.10** (previously 0.9). `rand::Rng` appears in this crate's
+  public signatures — the genetic operators (`order_crossover`, `pmx_crossover`,
+  `swap_mutation`, `insert_mutation`, `invert_mutation`) and the selection
+  strategies are generic over `R: Rng` — so the two versions are not
+  interchangeable at the boundary. Callers must move to `rand` 0.10 as well.
+  The generated sequences for a given seed are unchanged, so seeded runs
+  reproduce the previous release's results.
+- **The minimum supported Rust version is now declared as 1.87** and is verified
+  by building on that exact toolchain; 1.86 and below fail. The requirement comes
+  from this crate's own use of `unsigned_is_multiple_of`, stabilised in 1.87 —
+  not from its dependencies, which would suggest a lower figure. The crate
+  previously declared no `rust-version` at all.
+- **`u-numflow` is now required at 0.4** (previously 0.3), following that crate's
+  own `rand` 0.10 break.
+
+### Changed
+
+- **`getrandom` is now 0.4** on WebAssembly targets, reaching the browser entropy
+  source through its `wasm_js` crate feature alone. The
+  `RUSTFLAGS --cfg getrandom_backend="wasm_js"` that 0.3 required is no longer
+  needed.
+
 ## [0.3.2] - 2026-07-05
 
 ### Fixed

@@ -1,6 +1,6 @@
 [package]
 name = "u-metaheur"
-version = "0.3.2"
+version = "0.4.0"
 rust-version = "1.87"
 edition = "2021"
 authors = ["iyulab"]
@@ -21,7 +21,7 @@ parallel = ["dep:rayon"]
 wasm = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen", "dep:serde_json", "dep:serde"]
 
 [dependencies]
-u-numflow = { version = "0.3", path = "../../foundation/u-numflow" }
+u-numflow = { version = "0.4", path = "../../foundation/u-numflow" }
 rand = "0.10"
 rayon = { version = "1.10", optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
