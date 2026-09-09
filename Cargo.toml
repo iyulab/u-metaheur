@@ -21,7 +21,7 @@ parallel = ["dep:rayon"]
 wasm = ["dep:wasm-bindgen", "dep:serde-wasm-bindgen", "dep:serde_json", "dep:serde"]
 
 [dependencies]
-u-numflow = { version = "0.4", path = "../../foundation/u-numflow" }
+u-numflow = "0.4"
 rand = "0.10"
 rayon = { version = "1.10", optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
