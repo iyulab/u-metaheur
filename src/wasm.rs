@@ -109,7 +109,7 @@ impl WasmRng {
     fn new() -> Self {
         // Use rand's thread_rng for seeding — rand uses getrandom under the
         // hood which is already configured for WASM via the wasm_js feature.
-        use rand::{Rng, RngExt};
+        use rand::Rng;
         let seed = rand::rng().next_u64();
         Self { state: seed }
     }
