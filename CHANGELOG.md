@@ -8,6 +8,11 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Changed
+
+- `u-numflow` pin moves to 0.6 (tail-precise normal functions). No change in
+  this crate's own code or output; not a release on its own.
+
 ## [0.4.0] - 2026-09-07
 
 ### Changed (breaking)
