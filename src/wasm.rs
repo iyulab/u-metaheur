@@ -169,7 +169,7 @@ fn default_mutation_rate() -> f64 {
     0.05
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, tsify::Tsify)]
 struct GaResult {
     best_distance: f64,
     best_tour: Vec<usize>,
@@ -224,7 +224,7 @@ fn swap_mutate(tour: &mut [usize], rng: &mut WasmRng) {
 ///
 /// # Returns
 /// JS object with `best_distance`, `best_tour`, `generations_run`.
-#[wasm_bindgen]
+#[wasm_bindgen(unchecked_return_type = "GaResult")]
 pub fn run_ga(config: JsValue) -> Result<JsValue, JsValue> {
     let config: GaConfig = from_js(config, "config")?;
 
@@ -360,7 +360,7 @@ fn default_iterations() -> usize {
     5000
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, tsify::Tsify)]
 struct SaResult {
     best_distance: f64,
     best_tour: Vec<usize>,
@@ -381,7 +381,7 @@ struct SaResult {
 ///
 /// # Returns
 /// JS object with `best_distance`, `best_tour`, `iterations_run`.
-#[wasm_bindgen]
+#[wasm_bindgen(unchecked_return_type = "SaResult")]
 pub fn run_sa(config: JsValue) -> Result<JsValue, JsValue> {
     let config: SaConfig = from_js(config, "config")?;
 
