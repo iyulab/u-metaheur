@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Maintained from 0.2.1 onward; earlier entries list release dates only (see git history).
 
+## [Unreleased]
+
+### Fixed
+
+- **`run_sa` reported a tour length below zero, and chose its best tour by
+  it.** The annealer tracks the tour length from each 2-opt move's delta, and
+  the delta formula is wrong for one move: reversing the whole tour. On a
+  cycle that changes nothing, but the two edges the formula reads are then the
+  same edge, so it priced the move at minus twice that edge. Every run drifted:
+  four nodes and 200 iterations gave `best_distance` = -72.8 (and 20 runs in
+  20 were negative), and the tour returned as best was the one with the most
+  drift, not the shortest. The move is now skipped, as reversing a single
+  node already was; `best_distance` is the length of `best_tour`.
+
+### Changed
+
+- **Every exported WASM function declares its parameter types.** Inputs were
+  typed `any`; `run_ga` and `run_sa` now take `GaConfig` and `SaConfig`, with
+  the defaulted settings optional, so a misspelt setting does not compile.
+  The runtime path is unchanged.
+- The publishing workflow now also fails if an exported function takes a
+  parameter typed `any` (`check-typed-dts.sh --params`).
+
 ## [0.4.1] - 2026-09-20
 
 ### Added

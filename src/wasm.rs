@@ -114,6 +114,11 @@ impl WasmRng {
         Self { state: seed }
     }
 
+    #[cfg(test)]
+    fn with_seed(seed: u64) -> Self {
+        Self { state: seed }
+    }
+
     fn next_u64(&mut self) -> u64 {
         // Splitmix64
         self.state = self.state.wrapping_add(0x9e37_79b9_7f4a_7c15);
@@ -147,15 +152,18 @@ fn shuffle(slice: &mut [usize], rng: &mut WasmRng) {
 // GA — Genetic Algorithm for TSP
 // ============================================================================
 
-#[derive(Deserialize)]
+#[derive(Deserialize, tsify::Tsify)]
 #[serde(deny_unknown_fields)]
 struct GaConfig {
     nodes: Vec<[f64; 2]>,
     #[serde(default = "default_pop_size")]
+    #[tsify(optional)]
     population_size: usize,
     #[serde(default = "default_generations")]
+    #[tsify(optional)]
     generations: usize,
     #[serde(default = "default_mutation_rate")]
+    #[tsify(optional)]
     mutation_rate: f64,
 }
 
@@ -225,7 +233,9 @@ fn swap_mutate(tour: &mut [usize], rng: &mut WasmRng) {
 /// # Returns
 /// JS object with `best_distance`, `best_tour`, `generations_run`.
 #[wasm_bindgen(unchecked_return_type = "GaResult")]
-pub fn run_ga(config: JsValue) -> Result<JsValue, JsValue> {
+pub fn run_ga(
+    #[wasm_bindgen(unchecked_param_type = "GaConfig")] config: JsValue,
+) -> Result<JsValue, JsValue> {
     let config: GaConfig = from_js(config, "config")?;
 
     let n = config.nodes.len();
@@ -338,15 +348,18 @@ fn tournament_select(distances: &[f64], k: usize, rng: &mut WasmRng) -> usize {
 // SA — Simulated Annealing for TSP
 // ============================================================================
 
-#[derive(Deserialize)]
+#[derive(Deserialize, tsify::Tsify)]
 #[serde(deny_unknown_fields)]
 struct SaConfig {
     nodes: Vec<[f64; 2]>,
     #[serde(default = "default_temp")]
+    #[tsify(optional)]
     initial_temp: f64,
     #[serde(default = "default_cooling")]
+    #[tsify(optional)]
     cooling_rate: f64,
     #[serde(default = "default_iterations")]
+    #[tsify(optional)]
     iterations: usize,
 }
 
@@ -382,7 +395,9 @@ struct SaResult {
 /// # Returns
 /// JS object with `best_distance`, `best_tour`, `iterations_run`.
 #[wasm_bindgen(unchecked_return_type = "SaResult")]
-pub fn run_sa(config: JsValue) -> Result<JsValue, JsValue> {
+pub fn run_sa(
+    #[wasm_bindgen(unchecked_param_type = "SaConfig")] config: JsValue,
+) -> Result<JsValue, JsValue> {
     let config: SaConfig = from_js(config, "config")?;
 
     let n = config.nodes.len();
@@ -400,24 +415,56 @@ pub fn run_sa(config: JsValue) -> Result<JsValue, JsValue> {
     }
 
     let mut rng = WasmRng::new();
-    let nodes = &config.nodes;
+    let (best, best_dist) = anneal(
+        &config.nodes,
+        config.initial_temp,
+        config.cooling_rate,
+        config.iterations,
+        &mut rng,
+    );
 
-    // Start from a nearest-neighbour tour
+    let result = SaResult {
+        best_distance: best_dist,
+        best_tour: best,
+        iterations_run: config.iterations,
+    };
+
+    serde_wasm_bindgen::to_value(&result)
+        .map_err(|e| JsValue::from_str(&format!("serialization error: {e}")))
+}
+
+/// Simulated annealing over 2-opt moves, from a nearest-neighbour tour.
+///
+/// Returns the best tour seen and its length. The length is tracked
+/// incrementally from each move's delta, which is exact for every move except
+/// one: reversing the whole tour (`lo == 0`, `hi == n - 1`). On a cycle that
+/// changes nothing, but the two edges the delta formula reads are then the
+/// same edge, so the formula reported a saving of twice its length. Summed
+/// over a run, the tracked length drifted below zero and the "best" tour was
+/// chosen by a length it did not have; the move is skipped like `lo == hi`.
+fn anneal(
+    nodes: &[[f64; 2]],
+    initial_temp: f64,
+    cooling_rate: f64,
+    iterations: usize,
+    rng: &mut WasmRng,
+) -> (Vec<usize>, f64) {
+    let n = nodes.len();
     let mut current = nearest_neighbour_tour(nodes);
     let mut current_dist = tour_distance(&current, nodes);
     let mut best = current.clone();
     let mut best_dist = current_dist;
 
-    let mut temp = config.initial_temp;
+    let mut temp = initial_temp;
 
-    for _ in 0..config.iterations {
+    for _ in 0..iterations {
         // 2-opt neighbour: reverse a random sub-segment
         let i = rng.next_usize(n);
         let j = rng.next_usize(n);
         let (lo, hi) = if i <= j { (i, j) } else { (j, i) };
 
-        if lo == hi {
-            temp *= config.cooling_rate;
+        if lo == hi || hi - lo == n - 1 {
+            temp *= cooling_rate;
             continue;
         }
 
@@ -449,17 +496,10 @@ pub fn run_sa(config: JsValue) -> Result<JsValue, JsValue> {
             }
         }
 
-        temp *= config.cooling_rate;
+        temp *= cooling_rate;
     }
 
-    let result = SaResult {
-        best_distance: best_dist,
-        best_tour: best,
-        iterations_run: config.iterations,
-    };
-
-    serde_wasm_bindgen::to_value(&result)
-        .map_err(|e| JsValue::from_str(&format!("serialization error: {e}")))
+    (best, best_dist)
 }
 
 // ============================================================================
@@ -469,6 +509,37 @@ pub fn run_sa(config: JsValue) -> Result<JsValue, JsValue> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The reported length is the length of the reported tour, whatever the
+    /// seed. The whole-tour reversal made the tracked length drift below zero:
+    /// four nodes, 200 iterations, and the result said -72.8.
+    #[test]
+    fn anneal_reports_the_length_of_the_tour_it_returns() {
+        let nodes = vec![[0.0, 0.0], [1.0, 1.0], [2.0, 0.0], [1.0, -1.0], [3.0, 2.0]];
+        for seed in 0..200u64 {
+            let mut rng = WasmRng::with_seed(seed);
+            let (tour, dist) = anneal(&nodes, 1000.0, 0.995, 500, &mut rng);
+            let actual = tour_distance(&tour, &nodes);
+            assert!(
+                (dist - actual).abs() < 1e-9,
+                "seed {seed}: reported {dist}, tour measures {actual}"
+            );
+            let mut sorted = tour.clone();
+            sorted.sort_unstable();
+            assert_eq!(sorted, (0..nodes.len()).collect::<Vec<_>>());
+        }
+    }
+
+    /// On two nodes the only move is the whole-tour reversal, which the delta
+    /// formula prices at minus twice the edge.
+    #[test]
+    fn anneal_on_two_nodes_keeps_the_single_tour_length() {
+        let nodes = vec![[0.0, 0.0], [3.0, 4.0]];
+        let mut rng = WasmRng::with_seed(7);
+        let (tour, dist) = anneal(&nodes, 1000.0, 0.995, 100, &mut rng);
+        assert!((dist - 10.0).abs() < 1e-12, "got {dist}");
+        assert!((tour_distance(&tour, &nodes) - 10.0).abs() < 1e-12);
+    }
 
     fn make_nodes() -> Vec<[f64; 2]> {
         vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
