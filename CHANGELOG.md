@@ -8,6 +8,8 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-09-29
+
 ### Fixed
 
 - **`run_sa` reported a tour length below zero, and chose its best tour by
@@ -27,7 +29,7 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   the defaulted settings optional, so a misspelt setting does not compile.
   The runtime path is unchanged.
 - The publishing workflow now also fails if an exported function takes a
-  parameter typed `any` (`check-typed-dts.sh --params`).
+  parameter typed `any` (`check-typed-dts.sh`).
 
 ## [0.4.1] - 2026-09-20
 
