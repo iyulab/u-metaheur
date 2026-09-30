@@ -8,6 +8,8 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-09-30
+
 ### Added
 
 - README: a quick-start example. The npm section described how the package
