@@ -142,6 +142,27 @@ console.log(sa.best_distance, sa.iterations_run);
 `cooling_rate`. Every setting is optional except `nodes`, and a setting the
 function does not have is rejected rather than ignored.
 
+### Errors
+
+A refusal throws an `Error` whose `message` is readable text and which carries a
+`code` naming the reason, next to the values behind it:
+
+```js
+import { run_sa } from '@iyulab/u-metaheur';
+
+try {
+  run_sa({ nodes: [[0, 0], [1, 0], [1, 1]], cooling_rate: 1 });
+} catch (err) {
+  console.log(err.code, err.parameter, err.min, err.max, err.got); // parameter_out_of_range cooling_rate 0 1 1
+}
+```
+
+| `code` | Fields | Meaning |
+|---|---|---|
+| `insufficient_data` | `parameter` (`"nodes"`), `min`, `got` | Fewer than 2 nodes |
+| `parameter_out_of_range` | `parameter`, `min`, `max` (or `null`), `got` | `population_size < 2`, `generations` or `iterations` of 0, `initial_temp ≤ 0`, or `cooling_rate` outside (0, 1) — the message says whether a bound is included |
+| `malformed_input` | `parameter` | An argument of the wrong shape or type (a missing or unknown key), or a JSON string |
+
 ### TypeScript
 
 Every exported function declares its parameter and return types, and the

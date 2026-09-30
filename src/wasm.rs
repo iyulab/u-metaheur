@@ -10,8 +10,7 @@
 //!
 //! # Usage (JavaScript)
 //! ```js
-//! import init, { run_ga, run_sa } from '@iyulab/u-metaheur';
-//! await init();
+//! import { run_ga, run_sa } from '@iyulab/u-metaheur';
 //!
 //! const gaResult = run_ga({
 //!   nodes: [[0, 0], [1, 2], [3, 1]],
@@ -29,19 +28,104 @@
 //! });
 //! console.log(saResult.best_distance, saResult.best_tour);
 //! ```
+//!
+//! Every refusal throws an `Error` whose `message` is readable text and which
+//! carries `code` -- a stable reason -- and the values behind it
+//! (`parameter`, `min`, `max`, `got`). See the README's *Errors*.
 
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use wasm_bindgen::prelude::*;
 
 // ============================================================================
 // Shared utilities
 // ============================================================================
 
+/// A refusal on its way to JavaScript: the text for `Error.message`, and the
+/// fields -- `code` first among them -- copied onto the `Error`.
+#[derive(Debug)]
+struct WireError {
+    message: String,
+    fields: serde_json::Value,
+}
+
+impl WireError {
+    fn new(code: &str, message: String, mut extra: serde_json::Value) -> Self {
+        let mut fields = serde_json::Map::new();
+        fields.insert("code".into(), json!(code));
+        if let Some(extra) = extra.as_object_mut() {
+            fields.append(extra);
+        }
+        WireError {
+            message,
+            fields: serde_json::Value::Object(fields),
+        }
+    }
+
+    /// An argument that is not the shape the function takes: a JSON string
+    /// instead of a value, a wrong type, a missing or unknown key.
+    fn malformed_input(parameter: &str, message: String) -> Self {
+        Self::new(
+            "malformed_input",
+            message,
+            json!({ "parameter": parameter }),
+        )
+    }
+
+    /// A setting outside the range the solver accepts. `max` is `None` when
+    /// the range is open above; the message says whether a bound is included.
+    fn out_of_range(
+        parameter: &str,
+        min: f64,
+        max: Option<f64>,
+        got: f64,
+        message: String,
+    ) -> Self {
+        Self::new(
+            "parameter_out_of_range",
+            message,
+            json!({ "parameter": parameter, "min": min, "max": max, "got": got }),
+        )
+    }
+
+    /// Fewer nodes than a tour needs.
+    fn too_few_nodes(got: usize) -> Self {
+        Self::new(
+            "insufficient_data",
+            format!("need at least 2 nodes, got {got}"),
+            json!({ "parameter": "nodes", "min": 2, "got": got }),
+        )
+    }
+}
+
+/// Every refusal crosses into JavaScript as an `Error` whose `message` is the
+/// readable text and which carries `code` and the values behind it as further
+/// properties.
+fn js_err(error: WireError) -> JsValue {
+    let js = js_sys::Error::new(&error.message);
+    // `json_compatible` turns the map into a plain object; the default would
+    // produce a JavaScript `Map`, which `Object.assign` does not read.
+    if let Ok(fields) = error
+        .fields
+        .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+    {
+        js_sys::Object::assign(&js, &fields.into());
+    }
+    js.into()
+}
+
+/// Serializes a response; a failure is reported rather than unwrapped.
+fn to_js<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen::to_value(value)
+        .map_err(|e| js_err(WireError::malformed_input("result", e.to_string())))
+}
+
 /// Deserialize a native JS value, rejecting JSON strings with an actionable
 /// message and prefixing the offending parameter name to any serde error.
 fn from_js<T: serde::de::DeserializeOwned>(value: JsValue, param: &str) -> Result<T, JsValue> {
+    let refuse = |message: String| js_err(WireError::malformed_input(param, message));
     if value.as_string().is_some() {
-        return Err(JsValue::from_str(&format!(
+        return Err(refuse(format!(
             "{param}: expected a native JS object/array, got a string — \
              pass the value directly, not JSON.stringify(...)"
         )));
@@ -49,9 +133,79 @@ fn from_js<T: serde::de::DeserializeOwned>(value: JsValue, param: &str) -> Resul
     // serde-wasm-bindgen reads only a struct's declared fields from a JS
     // object, so `deny_unknown_fields` never sees extra keys. Round-trip
     // through serde_json::Value so the strict wire schema is enforced.
-    let json: serde_json::Value = serde_wasm_bindgen::from_value(value)
-        .map_err(|e| JsValue::from_str(&format!("{param}: {e}")))?;
-    serde_json::from_value(json).map_err(|e| JsValue::from_str(&format!("{param}: {e}")))
+    let json: serde_json::Value =
+        serde_wasm_bindgen::from_value(value).map_err(|e| refuse(format!("{param}: {e}")))?;
+    serde_json::from_value(json).map_err(|e| refuse(format!("{param}: {e}")))
+}
+
+/// The settings `run_ga` refuses.
+fn check_ga(config: &GaConfig) -> Result<(), WireError> {
+    if config.nodes.len() < 2 {
+        return Err(WireError::too_few_nodes(config.nodes.len()));
+    }
+    if config.population_size < 2 {
+        return Err(WireError::out_of_range(
+            "population_size",
+            2.0,
+            None,
+            config.population_size as f64,
+            format!(
+                "population_size must be at least 2, got {}",
+                config.population_size
+            ),
+        ));
+    }
+    if config.generations == 0 {
+        return Err(WireError::out_of_range(
+            "generations",
+            1.0,
+            None,
+            0.0,
+            "generations must be at least 1, got 0".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// The settings `run_sa` refuses.
+fn check_sa(config: &SaConfig) -> Result<(), WireError> {
+    if config.nodes.len() < 2 {
+        return Err(WireError::too_few_nodes(config.nodes.len()));
+    }
+    if config.initial_temp <= 0.0 {
+        return Err(WireError::out_of_range(
+            "initial_temp",
+            0.0,
+            None,
+            config.initial_temp,
+            format!(
+                "initial_temp must be positive (> 0), got {}",
+                config.initial_temp
+            ),
+        ));
+    }
+    if config.cooling_rate <= 0.0 || config.cooling_rate >= 1.0 {
+        return Err(WireError::out_of_range(
+            "cooling_rate",
+            0.0,
+            Some(1.0),
+            config.cooling_rate,
+            format!(
+                "cooling_rate must be in (0, 1), both excluded, got {}",
+                config.cooling_rate
+            ),
+        ));
+    }
+    if config.iterations == 0 {
+        return Err(WireError::out_of_range(
+            "iterations",
+            1.0,
+            None,
+            0.0,
+            "iterations must be at least 1, got 0".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 /// Euclidean distance between two 2-D nodes.
@@ -237,17 +391,8 @@ pub fn run_ga(
     #[wasm_bindgen(unchecked_param_type = "GaConfig")] config: JsValue,
 ) -> Result<JsValue, JsValue> {
     let config: GaConfig = from_js(config, "config")?;
-
+    check_ga(&config).map_err(js_err)?;
     let n = config.nodes.len();
-    if n < 2 {
-        return Err(JsValue::from_str("need at least 2 nodes"));
-    }
-    if config.population_size < 2 {
-        return Err(JsValue::from_str("population_size must be at least 2"));
-    }
-    if config.generations == 0 {
-        return Err(JsValue::from_str("generations must be at least 1"));
-    }
 
     let mut rng = WasmRng::new();
     let nodes = &config.nodes;
@@ -327,8 +472,7 @@ pub fn run_ga(
         generations_run: config.generations,
     };
 
-    serde_wasm_bindgen::to_value(&result)
-        .map_err(|e| JsValue::from_str(&format!("serialization error: {e}")))
+    to_js(&result)
 }
 
 /// Tournament selection: pick the best of `k` random individuals.
@@ -399,20 +543,7 @@ pub fn run_sa(
     #[wasm_bindgen(unchecked_param_type = "SaConfig")] config: JsValue,
 ) -> Result<JsValue, JsValue> {
     let config: SaConfig = from_js(config, "config")?;
-
-    let n = config.nodes.len();
-    if n < 2 {
-        return Err(JsValue::from_str("need at least 2 nodes"));
-    }
-    if config.initial_temp <= 0.0 {
-        return Err(JsValue::from_str("initial_temp must be positive"));
-    }
-    if config.cooling_rate <= 0.0 || config.cooling_rate >= 1.0 {
-        return Err(JsValue::from_str("cooling_rate must be in (0, 1)"));
-    }
-    if config.iterations == 0 {
-        return Err(JsValue::from_str("iterations must be at least 1"));
-    }
+    check_sa(&config).map_err(js_err)?;
 
     let mut rng = WasmRng::new();
     let (best, best_dist) = anneal(
@@ -429,8 +560,7 @@ pub fn run_sa(
         iterations_run: config.iterations,
     };
 
-    serde_wasm_bindgen::to_value(&result)
-        .map_err(|e| JsValue::from_str(&format!("serialization error: {e}")))
+    to_js(&result)
 }
 
 /// Simulated annealing over 2-opt moves, from a nearest-neighbour tour.
@@ -508,6 +638,44 @@ fn anneal(
 
 #[cfg(test)]
 mod tests {
+    /// Every refusal names its reason as a `code` and carries the values
+    /// behind it.
+    #[test]
+    fn refusals_carry_their_code_and_values() {
+        let ga = |nodes: usize, population_size: usize, generations: usize| GaConfig {
+            nodes: vec![[0.0, 0.0]; nodes],
+            population_size,
+            generations,
+            ..serde_json::from_value(serde_json::json!({ "nodes": [] })).expect("defaults")
+        };
+        let err = check_ga(&ga(1, 10, 10)).expect_err("one node");
+        assert_eq!(
+            err.fields,
+            json!({ "code": "insufficient_data", "parameter": "nodes", "min": 2, "got": 1 })
+        );
+        let err = check_ga(&ga(3, 1, 10)).expect_err("population of one");
+        assert_eq!(err.fields["parameter"], "population_size");
+        assert_eq!(err.fields["max"], serde_json::Value::Null);
+        assert!(check_ga(&ga(3, 2, 1)).is_ok());
+
+        let sa: SaConfig = serde_json::from_value(serde_json::json!({
+            "nodes": [[0.0, 0.0], [1.0, 1.0]],
+            "cooling_rate": 1.0,
+        }))
+        .expect("an SA config");
+        let err = check_sa(&sa).expect_err("cooling rate of 1");
+        assert_eq!(
+            err.fields,
+            json!({
+                "code": "parameter_out_of_range",
+                "parameter": "cooling_rate",
+                "min": 0.0,
+                "max": 1.0,
+                "got": 1.0,
+            })
+        );
+    }
+
     use super::*;
 
     /// The reported length is the length of the reported tour, whatever the

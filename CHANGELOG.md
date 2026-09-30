@@ -10,6 +10,12 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ### Changed
 
+- **Breaking:** `run_ga` and `run_sa` throw an `Error` carrying a stable `code`
+  (`insufficient_data`, `parameter_out_of_range`, `malformed_input`) and the
+  values behind it (`parameter`, `min`, `max`, `got`) instead of a bare string.
+  `err.message` reads as before, now with the value that was refused, but
+  `String(err)` starts with `Error: `.
+
 - The README says a browser without a bundler is not supported (the package
   loads its `.wasm` through an ES module import, which browsers refuse), instead
   of listing only the environments that work.
