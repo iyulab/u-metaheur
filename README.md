@@ -98,6 +98,27 @@ The package resolves per environment via a conditional `exports` map:
 | Bundlers (webpack, Vite, …) | ESM + WebAssembly ESM-integration (`default` condition) |
 | Node.js — `require()`, ESM `import`, CJS TS runners (`tsx`, `ts-node`) | CJS glue loading the wasm from the filesystem (`node` condition) — no loader hooks or flags |
 
+### Quick Start
+
+Both functions solve a travelling-salesman tour over `nodes` (`[x, y]` pairs)
+and return the best tour found and its closed length:
+
+```js
+import { run_ga, run_sa } from '@iyulab/u-metaheur';
+
+// The corners of a unit square: the shortest closed tour is its perimeter, 4.
+const nodes = [[0, 0], [1, 0], [1, 1], [0, 1]];
+
+const ga = run_ga({ nodes, population_size: 30, generations: 50 });
+const sa = run_sa({ nodes, iterations: 2000 });
+console.log(ga.best_distance, ga.best_tour); // 4 [ ... ]
+console.log(sa.best_distance, sa.iterations_run);
+```
+
+`run_ga` also takes `mutation_rate`; `run_sa` takes `initial_temp` and
+`cooling_rate`. Every setting is optional except `nodes`, and a setting the
+function does not have is rejected rather than ignored.
+
 ### TypeScript
 
 Every exported function declares its parameter and return types, and the

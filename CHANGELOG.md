@@ -8,6 +8,17 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Added
+
+- README: a quick-start example. The npm section described how the package
+  resolves but never showed a call.
+
+### Changed
+
+- The publishing workflow runs the README's JavaScript examples against the
+  built package before it publishes, so an example that throws is caught
+  before a reader copies it.
+
 ## [0.4.2] - 2026-09-29
 
 ### Fixed
