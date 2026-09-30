@@ -19,6 +19,15 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   built package before it publishes, so an example that throws is caught
   before a reader copies it.
 
+### Fixed
+
+- The README's "Key Traits" block showed trait definitions that do not match
+  the crate (`Chromosome`, a BRKGA decoder returning a solution). It is now a
+  table of the real traits and a runnable BRKGA and SA example. The Quick
+  Start pointed at the git repository instead of the published crate.
+  The README's Rust examples are now compiled and run with the doc-tests,
+  so an example that stops matching the API fails CI.
+
 ## [0.4.2] - 2026-09-29
 
 ### Fixed

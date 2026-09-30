@@ -24,32 +24,50 @@ u-metaheur provides generic implementations of common metaheuristic algorithms. 
 
 ## Key Traits
 
+Each algorithm asks for one small trait from your domain:
+
+| Algorithm | Implement | You provide |
+|---|---|---|
+| GA | `ga::GaProblem` (+ `ga::Individual`) | create, evaluate, crossover and mutate individuals |
+| BRKGA | `brkga::BrkgaDecoder` | `decode(&[f64]) -> f64` — random keys to a cost |
+| SA | `sa::SaProblem` | an initial solution, its `cost`, a `neighbor` |
+| ALNS | `alns::AlnsProblem` + `DestroyOperator` / `RepairOperator` | a solution, its cost, destroy and repair moves |
+
+Every cost is minimised.
+
 ```rust
-// GA — implement these for your domain
-trait Chromosome: Clone + Send + Sync {
-    fn fitness(&self) -> f64;
-}
-trait Crossover<C: Chromosome> {
-    fn crossover(&self, parent1: &C, parent2: &C, rng: &mut Rng) -> C;
-}
-trait Mutation<C: Chromosome> {
-    fn mutate(&self, chromosome: &mut C, rng: &mut Rng);
-}
+use rand::{Rng, RngExt};
+use u_metaheur::brkga::{BrkgaConfig, BrkgaDecoder, BrkgaRunner};
+use u_metaheur::sa::{SaConfig, SaProblem, SaRunner};
 
-// BRKGA — implement only the decoder
-trait BrkgaDecoder: Send + Sync {
-    type Solution;
-    fn decode(&self, keys: &[f64]) -> Self::Solution;
-    fn fitness(&self, solution: &Self::Solution) -> f64;
+// BRKGA: the decoder turns random keys into a cost -- here, how far the keys
+// are from ascending order.
+struct Sorted;
+impl BrkgaDecoder for Sorted {
+    fn decode(&self, keys: &[f64]) -> f64 {
+        keys.windows(2).filter(|w| w[0] > w[1]).count() as f64
+    }
 }
+let config = BrkgaConfig::new(6).with_stagnation_limit(200).with_seed(7);
+let result = BrkgaRunner::run(&Sorted, &config).unwrap();
+assert_eq!(result.best_cost, 0.0);
 
-// ALNS — implement destroy and repair operators
-trait DestroyOperator<S> {
-    fn destroy(&self, solution: &S, rng: &mut Rng) -> S;
+// SA: minimise (x - 3)^2 by small random steps.
+struct Parabola;
+impl SaProblem for Parabola {
+    type Solution = f64;
+    fn initial_solution<R: Rng>(&self, _rng: &mut R) -> f64 {
+        0.0
+    }
+    fn cost(&self, x: &f64) -> f64 {
+        (x - 3.0).powi(2)
+    }
+    fn neighbor<R: Rng>(&self, x: &f64, rng: &mut R) -> f64 {
+        x + rng.random_range(-0.5..0.5)
+    }
 }
-trait RepairOperator<S> {
-    fn repair(&self, solution: &S, rng: &mut Rng) -> S;
-}
+let result = SaRunner::run(&Parabola, &SaConfig::default().with_seed(7));
+assert!((result.best - 3.0).abs() < 0.1);
 ```
 
 ## Features
@@ -60,10 +78,10 @@ trait RepairOperator<S> {
 
 ```toml
 [dependencies]
-u-metaheur = { git = "https://github.com/iyulab/u-metaheur" }
+u-metaheur = "0.4"
 
 # with serde support
-u-metaheur = { git = "https://github.com/iyulab/u-metaheur", features = ["serde"] }
+u-metaheur = { version = "0.4", features = ["serde"] }
 ```
 
 ## Build & Test

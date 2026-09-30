@@ -36,3 +36,10 @@ pub mod tabu;
 pub mod vns;
 #[cfg(feature = "wasm")]
 pub mod wasm;
+
+// The README's Rust examples are the first code most users copy, so they are
+// compiled and run with the doc-tests. Without this they were checked by
+// nothing.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+pub struct ReadmeDoctests;
