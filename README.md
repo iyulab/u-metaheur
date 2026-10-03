@@ -66,7 +66,7 @@ impl SaProblem for Parabola {
         x + rng.random_range(-0.5..0.5)
     }
 }
-let result = SaRunner::run(&Parabola, &SaConfig::default().with_seed(7));
+let result = SaRunner::run(&Parabola, &SaConfig::default().with_seed(7)).expect("valid config");
 assert!((result.best - 3.0).abs() < 0.1);
 ```
 

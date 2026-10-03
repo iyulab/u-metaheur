@@ -125,9 +125,11 @@ impl AlnsConfig {
         self
     }
 
+    /// Sets the destroy degree range; [`validate`](Self::validate) requires
+    /// `0 <= min <= max <= 1`.
     pub fn with_destroy_degree(mut self, min: f64, max: f64) -> Self {
-        self.min_destroy_degree = min.clamp(0.0, 1.0);
-        self.max_destroy_degree = max.clamp(self.min_destroy_degree, 1.0);
+        self.min_destroy_degree = min;
+        self.max_destroy_degree = max;
         self
     }
 
@@ -148,26 +150,29 @@ impl AlnsConfig {
         if self.max_iterations == 0 {
             return Err("max_iterations must be positive".into());
         }
-        if self.reaction_factor <= 0.0 || self.reaction_factor > 1.0 {
+        if !(self.reaction_factor > 0.0 && self.reaction_factor <= 1.0) {
             return Err(format!(
                 "reaction_factor must be in (0, 1], got {}",
                 self.reaction_factor
             ));
         }
-        if self.cooling_rate <= 0.0 || self.cooling_rate >= 1.0 {
+        if !(self.cooling_rate > 0.0 && self.cooling_rate < 1.0) {
             return Err(format!(
                 "cooling_rate must be in (0, 1), got {}",
                 self.cooling_rate
             ));
         }
-        if self.initial_temperature <= 0.0 {
-            return Err("initial_temperature must be positive".into());
+        if !(self.initial_temperature > 0.0 && self.initial_temperature.is_finite()) {
+            return Err("initial_temperature must be positive and finite".into());
         }
-        if self.min_temperature <= 0.0 {
-            return Err("min_temperature must be positive".into());
+        if !(self.min_temperature > 0.0 && self.min_temperature.is_finite()) {
+            return Err("min_temperature must be positive and finite".into());
         }
-        if self.min_destroy_degree > self.max_destroy_degree {
-            return Err("min_destroy_degree must be <= max_destroy_degree".into());
+        let (min, max) = (self.min_destroy_degree, self.max_destroy_degree);
+        if !((0.0..=1.0).contains(&min) && (0.0..=1.0).contains(&max) && min <= max) {
+            return Err(format!(
+                "destroy degree must satisfy 0 <= min <= max <= 1, got min {min}, max {max}"
+            ));
         }
         Ok(())
     }
@@ -235,5 +240,17 @@ mod tests {
         assert!((config.min_destroy_degree - 0.2).abs() < 1e-10);
         assert!((config.max_destroy_degree - 0.5).abs() < 1e-10);
         assert_eq!(config.seed, Some(42));
+    }
+
+    #[test]
+    fn a_destroy_degree_range_out_of_order_or_bounds_is_refused() {
+        for (min, max) in [(0.5, 0.2), (-0.1, 0.5), (0.1, 1.5), (f64::NAN, 0.5)] {
+            let config = AlnsConfig::default().with_destroy_degree(min, max);
+            assert!(config.validate().is_err(), "{min} {max}");
+        }
+        assert!(AlnsConfig::default()
+            .with_destroy_degree(0.1, 0.4)
+            .validate()
+            .is_ok());
     }
 }

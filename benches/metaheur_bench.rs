@@ -155,7 +155,7 @@ fn bench_sa_sphere(c: &mut Criterion) {
             &(problem, config),
             |b, (p, c)| {
                 b.iter(|| {
-                    let result = SaRunner::run(black_box(p), black_box(c));
+                    let result = SaRunner::run(black_box(p), black_box(c)).expect("valid SaConfig");
                     black_box(result)
                 })
             },

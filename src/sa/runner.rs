@@ -40,7 +40,14 @@ pub struct SaRunner;
 
 impl SaRunner {
     /// Runs SA optimization.
-    pub fn run<P: SaProblem>(problem: &P, config: &SaConfig) -> SaResult<P::Solution> {
+    ///
+    /// # Errors
+    /// Returns the [`SaConfig::validate`] message when the configuration is
+    /// invalid.
+    pub fn run<P: SaProblem>(
+        problem: &P,
+        config: &SaConfig,
+    ) -> Result<SaResult<P::Solution>, String> {
         Self::run_with_cancel(problem, config, None)
     }
 
@@ -49,8 +56,8 @@ impl SaRunner {
         problem: &P,
         config: &SaConfig,
         cancel: Option<Arc<AtomicBool>>,
-    ) -> SaResult<P::Solution> {
-        config.validate().expect("invalid SaConfig");
+    ) -> Result<SaResult<P::Solution>, String> {
+        config.validate()?;
 
         let mut rng = match config.seed {
             Some(seed) => create_rng(seed),
@@ -149,7 +156,7 @@ impl SaRunner {
             cost_history.push(best_cost);
         }
 
-        SaResult {
+        Ok(SaResult {
             best,
             best_cost,
             iterations: total_iterations,
@@ -158,7 +165,7 @@ impl SaRunner {
             improving_moves,
             cancelled,
             cost_history,
-        }
+        })
     }
 }
 
@@ -232,7 +239,7 @@ mod tests {
             .with_iterations_per_temperature(50)
             .with_seed(42);
 
-        let result = SaRunner::run(&problem, &config);
+        let result = SaRunner::run(&problem, &config).expect("valid SaConfig");
 
         assert!(
             result.best_cost < 1.0,
@@ -254,7 +261,7 @@ mod tests {
             .with_max_iterations(50000)
             .with_seed(42);
 
-        let result = SaRunner::run(&problem, &config);
+        let result = SaRunner::run(&problem, &config).expect("valid SaConfig");
 
         assert!(
             result.best_cost < 1.0,
@@ -278,7 +285,7 @@ mod tests {
             .with_max_iterations(max_iter)
             .with_seed(42);
 
-        let result = SaRunner::run(&problem, &config);
+        let result = SaRunner::run(&problem, &config).expect("valid SaConfig");
 
         assert!(
             result.best_cost < 1.0,
@@ -297,7 +304,7 @@ mod tests {
             .with_max_iterations(100)
             .with_seed(42);
 
-        let result = SaRunner::run(&problem, &config);
+        let result = SaRunner::run(&problem, &config).expect("valid SaConfig");
 
         assert!(
             result.iterations <= 100,
@@ -319,7 +326,8 @@ mod tests {
         // regardless of how fast the solver completes.
         let cancel = Arc::new(AtomicBool::new(true));
 
-        let result = SaRunner::run_with_cancel(&problem, &config, Some(cancel));
+        let result =
+            SaRunner::run_with_cancel(&problem, &config, Some(cancel)).expect("valid SaConfig");
         assert!(result.cancelled);
     }
 
@@ -333,7 +341,7 @@ mod tests {
             .with_iterations_per_temperature(100)
             .with_seed(42);
 
-        let result = SaRunner::run(&problem, &config);
+        let result = SaRunner::run(&problem, &config).expect("valid SaConfig");
 
         for window in result.cost_history.windows(2) {
             assert!(
@@ -384,7 +392,7 @@ mod tests {
             .with_iterations_per_temperature(200)
             .with_seed(42);
 
-        let result = SaRunner::run(&problem, &config);
+        let result = SaRunner::run(&problem, &config).expect("valid SaConfig");
 
         assert!(
             result.best_cost <= 4.0,
@@ -404,7 +412,7 @@ mod tests {
             .with_iterations_per_temperature(1000)
             .with_seed(42);
 
-        let result = SaRunner::run(&problem, &config);
+        let result = SaRunner::run(&problem, &config).expect("valid SaConfig");
 
         // At extreme temperature, acceptance ratio should be very high
         let acceptance_ratio = result.accepted_moves as f64 / result.iterations as f64;

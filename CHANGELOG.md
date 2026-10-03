@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Maintained from 0.2.1 onward; earlier entries list release dates only (see git history).
 
+## [Unreleased]
+
+### Changed
+
+- **Breaking:** `SaRunner::run` and `SaRunner::run_with_cancel` return
+  `Result<SaResult, String>`, like the GA, BRKGA and ALNS runners. An invalid
+  `SaConfig` used to panic inside the library.
+
+### Fixed
+
+- **Breaking:** the configuration builders keep the value they are given and
+  `validate()` refuses one out of range, with the value in the message. They
+  used to clamp it silently: `with_mutation_rate(5.0)` ran at 1.0,
+  `with_elite_inheritance_prob(0.3)` became 0.5 and was then refused as
+  "must be > 0.5", `with_destroy_degree(0.5, 0.2)` raised the maximum so the
+  "min <= max" check could never fire, and a NaN passed or panicked inside
+  `clamp`. Covers `GaConfig` (elite ratio, crossover and mutation rate,
+  convergence threshold), `BrkgaConfig` (elite and mutant fraction, elite
+  inheritance probability) and `AlnsConfig` (destroy degree).
+- `validate()` refuses NaN everywhere it checks a range; comparisons such as
+  `x <= 0.0` let a NaN through.
+- WASM `run_ga` refuses a `mutation_rate` outside [0, 1]
+  (`parameter_out_of_range`); 5 used to behave as 1.
+
 ## [0.5.1] - 2026-10-03
 
 ### Fixed

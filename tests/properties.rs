@@ -468,8 +468,8 @@ proptest! {
             .with_iterations_per_temperature(3)
             .with_max_iterations(max_iterations)
             .with_seed(seed);
-        let sa = SaRunner::run(&problem, &sa_config);
-        let sa_again = SaRunner::run(&problem, &sa_config);
+        let sa = SaRunner::run(&problem, &sa_config).expect("valid SaConfig");
+        let sa_again = SaRunner::run(&problem, &sa_config).expect("valid SaConfig");
         prop_assert!(is_permutation(&sa.best, n), "SA best {:?}", sa.best);
         prop_assert!((SaProblem::cost(&problem, &sa.best) - sa.best_cost).abs() < 1e-9, "SA best_cost");
         check_non_increasing(&sa.cost_history, "SA best-so-far")?;

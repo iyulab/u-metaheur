@@ -129,21 +129,24 @@ impl GaConfig {
         self
     }
 
-    /// Sets the elite ratio.
+    /// Sets the elite ratio, in `[0, 1]` ([`validate`](Self::validate) refuses
+    /// anything else).
     pub fn with_elite_ratio(mut self, ratio: f64) -> Self {
-        self.elite_ratio = ratio.clamp(0.0, 1.0);
+        self.elite_ratio = ratio;
         self
     }
 
-    /// Sets the crossover rate.
+    /// Sets the crossover rate, in `[0, 1]` ([`validate`](Self::validate)
+    /// refuses anything else).
     pub fn with_crossover_rate(mut self, rate: f64) -> Self {
-        self.crossover_rate = rate.clamp(0.0, 1.0);
+        self.crossover_rate = rate;
         self
     }
 
-    /// Sets the mutation rate.
+    /// Sets the mutation rate, in `[0, 1]` ([`validate`](Self::validate)
+    /// refuses anything else).
     pub fn with_mutation_rate(mut self, rate: f64) -> Self {
-        self.mutation_rate = rate.clamp(0.0, 1.0);
+        self.mutation_rate = rate;
         self
     }
 
@@ -158,9 +161,10 @@ impl GaConfig {
     /// The stagnation counter is only reset when the relative improvement
     /// exceeds this threshold: `|old - new| / |old| >= threshold`.
     ///
-    /// Set to 0.0 to count any improvement (default).
+    /// Set to 0.0 to count any improvement (default). Must be finite and
+    /// `>= 0` ([`validate`](Self::validate) refuses anything else).
     pub fn with_convergence_threshold(mut self, threshold: f64) -> Self {
-        self.convergence_threshold = threshold.max(0.0);
+        self.convergence_threshold = threshold;
         self
     }
 
@@ -271,6 +275,15 @@ impl GaConfig {
         if self.max_generations == 0 {
             return Err("max_generations must be at least 1".into());
         }
+        for (name, value) in [
+            ("elite_ratio", self.elite_ratio),
+            ("crossover_rate", self.crossover_rate),
+            ("mutation_rate", self.mutation_rate),
+        ] {
+            if !(0.0..=1.0).contains(&value) {
+                return Err(format!("{name} must be in [0, 1], got {value}"));
+            }
+        }
         let elite_count = (self.population_size as f64 * self.elite_ratio) as usize;
         if elite_count < 1 {
             return Err("elite_ratio too low: at least 1 elite required".into());
@@ -278,8 +291,11 @@ impl GaConfig {
         if elite_count >= self.population_size {
             return Err("elite_ratio too high: elites fill entire population".into());
         }
-        if self.convergence_threshold < 0.0 {
-            return Err("convergence_threshold must be non-negative".into());
+        if !(self.convergence_threshold.is_finite() && self.convergence_threshold >= 0.0) {
+            return Err(format!(
+                "convergence_threshold must be finite and >= 0, got {}",
+                self.convergence_threshold
+            ));
         }
         if self.time_limit_ms == Some(0) {
             return Err("time_limit_ms must be positive or None".into());
@@ -372,15 +388,21 @@ mod tests {
     }
 
     #[test]
-    fn test_clamp_rates() {
-        let config = GaConfig::default()
-            .with_elite_ratio(1.5)
-            .with_crossover_rate(-0.5)
-            .with_mutation_rate(2.0);
-
-        assert!((config.elite_ratio - 1.0).abs() < 1e-10);
-        assert!((config.crossover_rate - 0.0).abs() < 1e-10);
-        assert!((config.mutation_rate - 1.0).abs() < 1e-10);
+    fn rates_outside_0_1_are_refused_not_clamped() {
+        for config in [
+            GaConfig::default().with_elite_ratio(1.5),
+            GaConfig::default().with_crossover_rate(-0.5),
+            GaConfig::default().with_mutation_rate(2.0),
+            GaConfig::default().with_mutation_rate(f64::NAN),
+        ] {
+            let err = config.validate().expect_err("out of [0, 1]");
+            assert!(err.contains("must be in [0, 1]"), "{err}");
+        }
+        let config = GaConfig::default().with_mutation_rate(2.0);
+        assert_eq!(
+            config.mutation_rate, 2.0,
+            "the builder keeps what it was given"
+        );
     }
 
     #[test]
@@ -410,9 +432,11 @@ mod tests {
     }
 
     #[test]
-    fn test_convergence_threshold_clamps_negative() {
-        let config = GaConfig::default().with_convergence_threshold(-0.5);
-        assert!((config.convergence_threshold - 0.0).abs() < 1e-15);
+    fn a_negative_or_nan_convergence_threshold_is_refused() {
+        for t in [-0.5, f64::NAN, f64::INFINITY] {
+            let config = GaConfig::default().with_convergence_threshold(t);
+            assert!(config.validate().is_err(), "{t}");
+        }
     }
 
     // ---- Presets ----

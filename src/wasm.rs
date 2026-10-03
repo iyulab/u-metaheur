@@ -253,6 +253,18 @@ fn check_ga(config: &GaConfig) -> Result<(), WireError> {
             "generations must be at least 1, got 0".to_string(),
         ));
     }
+    if !(0.0..=1.0).contains(&config.mutation_rate) {
+        return Err(WireError::out_of_range(
+            "mutation_rate",
+            0.0,
+            Some(1.0),
+            config.mutation_rate,
+            format!(
+                "mutation_rate must be in [0, 1], got {}",
+                config.mutation_rate
+            ),
+        ));
+    }
     Ok(())
 }
 
@@ -746,6 +758,16 @@ mod tests {
         assert_eq!(err.fields["parameter"], "population_size");
         assert_eq!(err.fields["max"], serde_json::Value::Null);
         assert!(check_ga(&ga(3, 2, 1)).is_ok());
+        let err = check_ga(&GaConfig {
+            mutation_rate: 5.0,
+            ..ga(3, 10, 10)
+        })
+        .expect_err("mutation rate above 1");
+        assert_eq!(
+            err.fields,
+            json!({ "code": "parameter_out_of_range", "parameter": "mutation_rate",
+                    "min": 0.0, "max": 1.0, "got": 5.0 })
+        );
 
         let sa: SaConfig = serde_json::from_value(serde_json::json!({
             "nodes": [[0.0, 0.0], [1.0, 1.0]],

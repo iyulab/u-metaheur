@@ -122,23 +122,23 @@ impl SaConfig {
 
     /// Validates the configuration.
     pub fn validate(&self) -> Result<(), String> {
-        if self.initial_temperature <= 0.0 {
-            return Err("initial_temperature must be positive".into());
+        if !(self.initial_temperature > 0.0 && self.initial_temperature.is_finite()) {
+            return Err("initial_temperature must be positive and finite".into());
         }
-        if self.min_temperature <= 0.0 {
-            return Err("min_temperature must be positive".into());
+        if !(self.min_temperature > 0.0 && self.min_temperature.is_finite()) {
+            return Err("min_temperature must be positive and finite".into());
         }
         if self.min_temperature >= self.initial_temperature {
             return Err("min_temperature must be less than initial_temperature".into());
         }
         match self.cooling {
             CoolingSchedule::Geometric { alpha } => {
-                if alpha <= 0.0 || alpha >= 1.0 {
+                if !(alpha > 0.0 && alpha < 1.0) {
                     return Err(format!("geometric alpha must be in (0, 1), got {alpha}"));
                 }
             }
             CoolingSchedule::LundyMees { beta } => {
-                if beta <= 0.0 {
+                if !(beta > 0.0 && beta.is_finite()) {
                     return Err(format!("lundy-mees beta must be positive, got {beta}"));
                 }
             }

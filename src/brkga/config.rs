@@ -76,17 +76,17 @@ impl BrkgaConfig {
     }
 
     pub fn with_elite_fraction(mut self, f: f64) -> Self {
-        self.elite_fraction = f.clamp(0.0, 1.0);
+        self.elite_fraction = f;
         self
     }
 
     pub fn with_mutant_fraction(mut self, f: f64) -> Self {
-        self.mutant_fraction = f.clamp(0.0, 1.0);
+        self.mutant_fraction = f;
         self
     }
 
     pub fn with_elite_inheritance_prob(mut self, p: f64) -> Self {
-        self.elite_inheritance_prob = p.clamp(0.5, 1.0);
+        self.elite_inheritance_prob = p;
         self
     }
 
@@ -118,6 +118,14 @@ impl BrkgaConfig {
         if self.population_size < 3 {
             return Err("population_size must be at least 3".into());
         }
+        for (name, value) in [
+            ("elite_fraction", self.elite_fraction),
+            ("mutant_fraction", self.mutant_fraction),
+        ] {
+            if !(0.0..=1.0).contains(&value) {
+                return Err(format!("{name} must be in [0, 1], got {value}"));
+            }
+        }
         if self.elite_fraction + self.mutant_fraction >= 1.0 {
             return Err(format!(
                 "elite_fraction ({}) + mutant_fraction ({}) must be < 1.0",
@@ -128,8 +136,11 @@ impl BrkgaConfig {
         if elite_count == 0 {
             return Err("elite_fraction too small: no elite individuals".into());
         }
-        if self.elite_inheritance_prob <= 0.5 {
-            return Err("elite_inheritance_prob must be > 0.5".into());
+        if !(self.elite_inheritance_prob > 0.5 && self.elite_inheritance_prob <= 1.0) {
+            return Err(format!(
+                "elite_inheritance_prob must be in (0.5, 1], got {}",
+                self.elite_inheritance_prob
+            ));
         }
         if self.max_generations == 0 {
             return Err("max_generations must be at least 1".into());
@@ -172,8 +183,17 @@ mod tests {
     }
 
     #[test]
-    fn test_clamp_inheritance() {
-        let config = BrkgaConfig::new(10).with_elite_inheritance_prob(0.3);
-        assert!((config.elite_inheritance_prob - 0.5).abs() < 1e-10);
+    fn an_inheritance_probability_outside_its_range_is_refused_with_its_value() {
+        for p in [0.3, 0.5, 1.2, f64::NAN] {
+            let err = BrkgaConfig::new(10)
+                .with_elite_inheritance_prob(p)
+                .validate()
+                .expect_err("outside (0.5, 1]");
+            assert!(err.contains(&format!("got {p}")), "{err}");
+        }
+        assert!(BrkgaConfig::new(10)
+            .with_elite_inheritance_prob(1.0)
+            .validate()
+            .is_ok());
     }
 }
