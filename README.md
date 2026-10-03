@@ -161,6 +161,7 @@ try {
 |---|---|---|
 | `insufficient_data` | `parameter` (`"nodes"`), `min`, `got` | Fewer than 2 nodes |
 | `parameter_out_of_range` | `parameter`, `min`, `max` (or `null`), `got` | `population_size < 2`, `generations` or `iterations` of 0, `initial_temp ≤ 0`, or `cooling_rate` outside (0, 1) — the message says whether a bound is included |
+| `value_not_finite` | `parameter`, `index` | A NaN or ±Infinity anywhere in an argument — `parameter` is the path to it (`config.nodes[1]`), `index` its position in that array, or `null` |
 | `malformed_input` | `parameter` | An argument of the wrong shape or type (a missing or unknown key), or a JSON string |
 
 ### TypeScript
