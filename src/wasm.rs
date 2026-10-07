@@ -224,7 +224,64 @@ fn from_js<T: serde::de::DeserializeOwned>(value: JsValue, param: &str) -> Resul
     // through serde_json::Value so the strict wire schema is enforced.
     let json: serde_json::Value =
         serde_wasm_bindgen::from_value(value).map_err(|e| refuse(format!("{param}: {e}")))?;
-    serde_json::from_value(json).map_err(|e| refuse(format!("{param}: {e}")))
+    from_json(json, param).map_err(js_err)
+}
+
+/// The half of [`from_js`] that enforces the wire schema, apart from the
+/// `JsValue` (which cannot be built off `wasm32`) so tests walk the same path a
+/// JS caller does. A refusal names where it stopped: see [`failure_site`].
+fn from_json<T: serde::de::DeserializeOwned>(
+    json: serde_json::Value,
+    param: &str,
+) -> Result<T, WireError> {
+    serde_path_to_error::deserialize(json).map_err(|e| {
+        let (parameter, index) = failure_site(param, e.path());
+        let mut err =
+            WireError::malformed_input(&parameter, format!("{param}: {}: {}", e.path(), e.inner()));
+        if let Some(i) = index {
+            err.fields["index"] = serde_json::json!(i);
+        }
+        err
+    })
+}
+
+/// Where in the argument `param` a request stopped deserializing, as the
+/// refusal reports it: the field (`design[1]`, `points[0].y`) and, when the
+/// failure sits in an array, its position there -- the same `parameter` /
+/// `index` a number array read element by element reports. Without it a
+/// `null` three levels down was "invalid type: null, expected f64" with no
+/// way to say which row (the gap `read_numbers` closed for bare arrays).
+fn failure_site(param: &str, path: &serde_path_to_error::Path) -> (String, Option<usize>) {
+    use serde_path_to_error::Segment;
+    let segments: Vec<&Segment> = path.iter().collect();
+    let index = segments.iter().rev().find_map(|s| match s {
+        Segment::Seq { index } => Some(*index),
+        _ => None,
+    });
+    // A trailing `[i]` is the index, not part of the name.
+    let named = match segments.last() {
+        Some(Segment::Seq { .. }) => &segments[..segments.len() - 1],
+        _ => &segments[..],
+    };
+    let mut name = String::new();
+    for segment in named {
+        match segment {
+            Segment::Seq { index } => name.push_str(&format!("[{index}]")),
+            Segment::Map { key } | Segment::Enum { variant: key } => {
+                if !name.is_empty() {
+                    name.push('.');
+                }
+                name.push_str(key);
+            }
+            Segment::Unknown => name.push_str(".?"),
+        }
+    }
+    // A top-level array argument (`data[1][2]`) or a failure at the root
+    // (a missing field) is named by the argument itself.
+    if name.is_empty() || name.starts_with('[') {
+        name.insert_str(0, param);
+    }
+    (name, index)
 }
 
 /// The settings `run_ga` refuses.
@@ -904,5 +961,24 @@ mod dto_strictness_tests {
         assert_rejects_unknown::<super::SaConfig>(
             json!({ "nodes": [[0.0, 0.0], [1.0, 1.0]], "cooling": 0.9 }),
         );
+    }
+}
+
+#[cfg(test)]
+mod path_tests {
+    //! A value of the wrong type deep inside an argument is refused where it
+    //! sits: `parameter` names the field, `index` its array position.
+
+    #[test]
+    fn a_bad_coordinate_is_refused_at_its_node() {
+        let err = super::from_json::<super::GaConfig>(
+            serde_json::json!({ "nodes": [[0.0, 0.0], [1.0, null]] }),
+            "config",
+        )
+        .err()
+        .expect("null is not a number");
+        assert_eq!(err.fields["code"], "malformed_input");
+        assert_eq!(err.fields["parameter"], "nodes[1]");
+        assert_eq!(err.fields["index"], 1);
     }
 }
