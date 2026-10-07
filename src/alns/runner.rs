@@ -2,6 +2,7 @@
 
 use super::config::AlnsConfig;
 use super::types::{AlnsProblem, DestroyOperator, RepairOperator};
+use crate::ConfigError;
 use rand::{Rng, RngExt};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -114,7 +115,7 @@ impl AlnsRunner {
         destroy_ops: &[D],
         repair_ops: &[R],
         config: &AlnsConfig,
-    ) -> Result<AlnsResult<P::Solution>, String>
+    ) -> Result<AlnsResult<P::Solution>, ConfigError>
     where
         P: AlnsProblem,
         D: DestroyOperator<P::Solution>,
@@ -133,7 +134,7 @@ impl AlnsRunner {
         repair_ops: &[RP],
         config: &AlnsConfig,
         cancel: Option<Arc<AtomicBool>>,
-    ) -> Result<AlnsResult<P::Solution>, String>
+    ) -> Result<AlnsResult<P::Solution>, ConfigError>
     where
         P: AlnsProblem,
         D: DestroyOperator<P::Solution>,
@@ -141,10 +142,16 @@ impl AlnsRunner {
     {
         config.validate()?;
         if destroy_ops.is_empty() {
-            return Err("at least one destroy operator required".to_string());
+            return Err(ConfigError::invalid(
+                "destroy_ops",
+                "at least one destroy operator required",
+            ));
         }
         if repair_ops.is_empty() {
-            return Err("at least one repair operator required".to_string());
+            return Err(ConfigError::invalid(
+                "repair_ops",
+                "at least one repair operator required",
+            ));
         }
 
         let mut rng = match config.seed {

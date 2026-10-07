@@ -2,6 +2,7 @@
 
 use super::config::BrkgaConfig;
 use super::types::BrkgaDecoder;
+use crate::ConfigError;
 use rand::RngExt;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -46,7 +47,10 @@ impl BrkgaRunner {
     ///
     /// # Errors
     /// Returns an error if the configuration is invalid.
-    pub fn run<D: BrkgaDecoder>(decoder: &D, config: &BrkgaConfig) -> Result<BrkgaResult, String> {
+    pub fn run<D: BrkgaDecoder>(
+        decoder: &D,
+        config: &BrkgaConfig,
+    ) -> Result<BrkgaResult, ConfigError> {
         Self::run_with_cancel(decoder, config, None)
     }
 
@@ -58,7 +62,7 @@ impl BrkgaRunner {
         decoder: &D,
         config: &BrkgaConfig,
         cancel: Option<Arc<AtomicBool>>,
-    ) -> Result<BrkgaResult, String> {
+    ) -> Result<BrkgaResult, ConfigError> {
         config.validate()?;
 
         let mut rng = match config.seed {

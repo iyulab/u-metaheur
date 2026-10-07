@@ -3,6 +3,7 @@
 //! [`GaConfig`] holds all parameters that control the evolutionary loop.
 
 use super::selection::Selection;
+use crate::ConfigError;
 
 /// Configuration for the Genetic Algorithm.
 ///
@@ -267,13 +268,26 @@ impl GaConfig {
 
     /// Validates the configuration.
     ///
-    /// Returns `Err` with a description if any parameter is invalid.
-    pub fn validate(&self) -> Result<(), String> {
+    /// Returns the first setting that is out of range or inconsistent with
+    /// the others, by name.
+    pub fn validate(&self) -> Result<(), ConfigError> {
         if self.population_size < 2 {
-            return Err("population_size must be at least 2".into());
+            return Err(ConfigError::out_of_range(
+                "population_size",
+                Some(2.0),
+                None,
+                self.population_size as f64,
+                "at least 2",
+            ));
         }
         if self.max_generations == 0 {
-            return Err("max_generations must be at least 1".into());
+            return Err(ConfigError::out_of_range(
+                "max_generations",
+                Some(1.0),
+                None,
+                0.0,
+                "at least 1",
+            ));
         }
         for (name, value) in [
             ("elite_ratio", self.elite_ratio),
@@ -281,24 +295,51 @@ impl GaConfig {
             ("mutation_rate", self.mutation_rate),
         ] {
             if !(0.0..=1.0).contains(&value) {
-                return Err(format!("{name} must be in [0, 1], got {value}"));
+                return Err(ConfigError::out_of_range(
+                    name,
+                    Some(0.0),
+                    Some(1.0),
+                    value,
+                    "in [0, 1]",
+                ));
             }
         }
         let elite_count = (self.population_size as f64 * self.elite_ratio) as usize;
         if elite_count < 1 {
-            return Err("elite_ratio too low: at least 1 elite required".into());
+            return Err(ConfigError::invalid(
+                "elite_ratio",
+                format!(
+                    "too low for a population of {}: at least 1 elite required",
+                    self.population_size
+                ),
+            ));
         }
         if elite_count >= self.population_size {
-            return Err("elite_ratio too high: elites fill entire population".into());
+            return Err(ConfigError::invalid(
+                "elite_ratio",
+                format!(
+                    "too high for a population of {}: elites fill the entire population",
+                    self.population_size
+                ),
+            ));
         }
         if !(self.convergence_threshold.is_finite() && self.convergence_threshold >= 0.0) {
-            return Err(format!(
-                "convergence_threshold must be finite and >= 0, got {}",
-                self.convergence_threshold
+            return Err(ConfigError::out_of_range(
+                "convergence_threshold",
+                Some(0.0),
+                None,
+                self.convergence_threshold,
+                "finite and at least 0",
             ));
         }
         if self.time_limit_ms == Some(0) {
-            return Err("time_limit_ms must be positive or None".into());
+            return Err(ConfigError::out_of_range(
+                "time_limit_ms",
+                Some(1.0),
+                None,
+                0.0,
+                "positive (or unset)",
+            ));
         }
         Ok(())
     }
@@ -382,9 +423,16 @@ mod tests {
             .with_elite_ratio(0.1);
         let err = config.validate().unwrap_err();
         assert!(
-            err.contains("elite_ratio too low"),
+            matches!(
+                err,
+                ConfigError::Invalid {
+                    parameter: "elite_ratio",
+                    ..
+                }
+            ),
             "unexpected error: {err}"
         );
+        assert!(err.to_string().contains("too low"), "{err}");
     }
 
     #[test]
@@ -396,7 +444,18 @@ mod tests {
             GaConfig::default().with_mutation_rate(f64::NAN),
         ] {
             let err = config.validate().expect_err("out of [0, 1]");
-            assert!(err.contains("must be in [0, 1]"), "{err}");
+            assert!(
+                matches!(
+                    err,
+                    ConfigError::OutOfRange {
+                        min: Some(0.0),
+                        max: Some(1.0),
+                        ..
+                    }
+                ),
+                "{err}"
+            );
+            assert!(err.to_string().contains("must be in [0, 1]"), "{err}");
         }
         let config = GaConfig::default().with_mutation_rate(2.0);
         assert_eq!(

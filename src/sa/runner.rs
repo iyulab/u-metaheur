@@ -2,6 +2,7 @@
 
 use super::config::{CoolingSchedule, SaConfig};
 use super::types::SaProblem;
+use crate::ConfigError;
 use rand::RngExt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -47,7 +48,7 @@ impl SaRunner {
     pub fn run<P: SaProblem>(
         problem: &P,
         config: &SaConfig,
-    ) -> Result<SaResult<P::Solution>, String> {
+    ) -> Result<SaResult<P::Solution>, ConfigError> {
         Self::run_with_cancel(problem, config, None)
     }
 
@@ -56,7 +57,7 @@ impl SaRunner {
         problem: &P,
         config: &SaConfig,
         cancel: Option<Arc<AtomicBool>>,
-    ) -> Result<SaResult<P::Solution>, String> {
+    ) -> Result<SaResult<P::Solution>, ConfigError> {
         config.validate()?;
 
         let mut rng = match config.seed {

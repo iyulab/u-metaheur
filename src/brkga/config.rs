@@ -1,5 +1,7 @@
 //! BRKGA configuration.
 
+use crate::ConfigError;
+
 /// Configuration for the BRKGA algorithm.
 ///
 /// # Parameters
@@ -111,39 +113,75 @@ impl BrkgaConfig {
     }
 
     /// Validates the configuration.
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), ConfigError> {
         if self.chromosome_length == 0 {
-            return Err("chromosome_length must be at least 1".into());
+            return Err(ConfigError::out_of_range(
+                "chromosome_length",
+                Some(1.0),
+                None,
+                0.0,
+                "at least 1",
+            ));
         }
         if self.population_size < 3 {
-            return Err("population_size must be at least 3".into());
+            return Err(ConfigError::out_of_range(
+                "population_size",
+                Some(3.0),
+                None,
+                self.population_size as f64,
+                "at least 3",
+            ));
         }
         for (name, value) in [
             ("elite_fraction", self.elite_fraction),
             ("mutant_fraction", self.mutant_fraction),
         ] {
             if !(0.0..=1.0).contains(&value) {
-                return Err(format!("{name} must be in [0, 1], got {value}"));
+                return Err(ConfigError::out_of_range(
+                    name,
+                    Some(0.0),
+                    Some(1.0),
+                    value,
+                    "in [0, 1]",
+                ));
             }
         }
         if self.elite_fraction + self.mutant_fraction >= 1.0 {
-            return Err(format!(
-                "elite_fraction ({}) + mutant_fraction ({}) must be < 1.0",
-                self.elite_fraction, self.mutant_fraction
+            return Err(ConfigError::invalid(
+                "mutant_fraction",
+                format!(
+                    "elite_fraction ({}) + mutant_fraction ({}) must be < 1.0",
+                    self.elite_fraction, self.mutant_fraction
+                ),
             ));
         }
         let elite_count = (self.population_size as f64 * self.elite_fraction) as usize;
         if elite_count == 0 {
-            return Err("elite_fraction too small: no elite individuals".into());
+            return Err(ConfigError::invalid(
+                "elite_fraction",
+                format!(
+                    "too small for a population of {}: no elite individuals",
+                    self.population_size
+                ),
+            ));
         }
         if !(self.elite_inheritance_prob > 0.5 && self.elite_inheritance_prob <= 1.0) {
-            return Err(format!(
-                "elite_inheritance_prob must be in (0.5, 1], got {}",
-                self.elite_inheritance_prob
+            return Err(ConfigError::out_of_range(
+                "elite_inheritance_prob",
+                Some(0.5),
+                Some(1.0),
+                self.elite_inheritance_prob,
+                "in (0.5, 1]",
             ));
         }
         if self.max_generations == 0 {
-            return Err("max_generations must be at least 1".into());
+            return Err(ConfigError::out_of_range(
+                "max_generations",
+                Some(1.0),
+                None,
+                0.0,
+                "at least 1",
+            ));
         }
         Ok(())
     }
@@ -189,7 +227,8 @@ mod tests {
                 .with_elite_inheritance_prob(p)
                 .validate()
                 .expect_err("outside (0.5, 1]");
-            assert!(err.contains(&format!("got {p}")), "{err}");
+            assert_eq!(err.parameter(), "elite_inheritance_prob");
+            assert!(err.to_string().contains(&format!("got {p}")), "{err}");
         }
         assert!(BrkgaConfig::new(10)
             .with_elite_inheritance_prob(1.0)

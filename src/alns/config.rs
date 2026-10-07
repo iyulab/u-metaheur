@@ -1,5 +1,7 @@
 //! ALNS configuration.
 
+use crate::ConfigError;
+
 /// Configuration for the ALNS algorithm.
 ///
 /// # Scoring
@@ -146,32 +148,68 @@ impl AlnsConfig {
     }
 
     /// Validates the configuration.
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), ConfigError> {
         if self.max_iterations == 0 {
-            return Err("max_iterations must be positive".into());
+            return Err(ConfigError::out_of_range(
+                "max_iterations",
+                Some(1.0),
+                None,
+                0.0,
+                "at least 1",
+            ));
         }
         if !(self.reaction_factor > 0.0 && self.reaction_factor <= 1.0) {
-            return Err(format!(
-                "reaction_factor must be in (0, 1], got {}",
-                self.reaction_factor
+            return Err(ConfigError::out_of_range(
+                "reaction_factor",
+                Some(0.0),
+                Some(1.0),
+                self.reaction_factor,
+                "in (0, 1]",
             ));
         }
         if !(self.cooling_rate > 0.0 && self.cooling_rate < 1.0) {
-            return Err(format!(
-                "cooling_rate must be in (0, 1), got {}",
-                self.cooling_rate
+            return Err(ConfigError::out_of_range(
+                "cooling_rate",
+                Some(0.0),
+                Some(1.0),
+                self.cooling_rate,
+                "in (0, 1)",
             ));
         }
         if !(self.initial_temperature > 0.0 && self.initial_temperature.is_finite()) {
-            return Err("initial_temperature must be positive and finite".into());
+            return Err(ConfigError::out_of_range(
+                "initial_temperature",
+                Some(0.0),
+                None,
+                self.initial_temperature,
+                "positive and finite",
+            ));
         }
         if !(self.min_temperature > 0.0 && self.min_temperature.is_finite()) {
-            return Err("min_temperature must be positive and finite".into());
+            return Err(ConfigError::out_of_range(
+                "min_temperature",
+                Some(0.0),
+                None,
+                self.min_temperature,
+                "positive and finite",
+            ));
         }
         let (min, max) = (self.min_destroy_degree, self.max_destroy_degree);
-        if !((0.0..=1.0).contains(&min) && (0.0..=1.0).contains(&max) && min <= max) {
-            return Err(format!(
-                "destroy degree must satisfy 0 <= min <= max <= 1, got min {min}, max {max}"
+        for (name, value) in [("min_destroy_degree", min), ("max_destroy_degree", max)] {
+            if !(0.0..=1.0).contains(&value) {
+                return Err(ConfigError::out_of_range(
+                    name,
+                    Some(0.0),
+                    Some(1.0),
+                    value,
+                    "in [0, 1]",
+                ));
+            }
+        }
+        if min > max {
+            return Err(ConfigError::invalid(
+                "min_destroy_degree",
+                format!("must not exceed max_destroy_degree ({max}), got {min}"),
             ));
         }
         Ok(())

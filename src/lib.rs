@@ -27,6 +27,8 @@
 //! all defined by consumers at higher layers.
 
 pub mod alns;
+mod config_error;
+pub use config_error::ConfigError;
 pub mod brkga;
 pub mod cp;
 pub mod dispatching;

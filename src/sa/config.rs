@@ -1,5 +1,7 @@
 //! SA configuration and cooling schedules.
 
+use crate::ConfigError;
+
 /// Cooling schedule for temperature reduction.
 ///
 /// # References
@@ -121,25 +123,55 @@ impl SaConfig {
     }
 
     /// Validates the configuration.
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), ConfigError> {
         if !(self.initial_temperature > 0.0 && self.initial_temperature.is_finite()) {
-            return Err("initial_temperature must be positive and finite".into());
+            return Err(ConfigError::out_of_range(
+                "initial_temperature",
+                Some(0.0),
+                None,
+                self.initial_temperature,
+                "positive and finite",
+            ));
         }
         if !(self.min_temperature > 0.0 && self.min_temperature.is_finite()) {
-            return Err("min_temperature must be positive and finite".into());
+            return Err(ConfigError::out_of_range(
+                "min_temperature",
+                Some(0.0),
+                None,
+                self.min_temperature,
+                "positive and finite",
+            ));
         }
         if self.min_temperature >= self.initial_temperature {
-            return Err("min_temperature must be less than initial_temperature".into());
+            return Err(ConfigError::invalid(
+                "min_temperature",
+                format!(
+                    "must be less than initial_temperature ({}), got {}",
+                    self.initial_temperature, self.min_temperature
+                ),
+            ));
         }
         match self.cooling {
             CoolingSchedule::Geometric { alpha } => {
                 if !(alpha > 0.0 && alpha < 1.0) {
-                    return Err(format!("geometric alpha must be in (0, 1), got {alpha}"));
+                    return Err(ConfigError::out_of_range(
+                        "cooling.alpha",
+                        Some(0.0),
+                        Some(1.0),
+                        alpha,
+                        "in (0, 1)",
+                    ));
                 }
             }
             CoolingSchedule::LundyMees { beta } => {
                 if !(beta > 0.0 && beta.is_finite()) {
-                    return Err(format!("lundy-mees beta must be positive, got {beta}"));
+                    return Err(ConfigError::out_of_range(
+                        "cooling.beta",
+                        Some(0.0),
+                        None,
+                        beta,
+                        "positive and finite",
+                    ));
                 }
             }
             CoolingSchedule::Linear => {}

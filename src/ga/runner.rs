@@ -5,6 +5,7 @@
 
 use super::config::GaConfig;
 use super::types::{Fitness, GaProblem, Individual};
+use crate::ConfigError;
 use rand::RngExt;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -84,7 +85,7 @@ impl GaRunner {
     pub fn run<P: GaProblem>(
         problem: &P,
         config: &GaConfig,
-    ) -> Result<GaResult<P::Individual>, String> {
+    ) -> Result<GaResult<P::Individual>, ConfigError> {
         Self::run_with_cancel(problem, config, None)
     }
 
@@ -100,7 +101,7 @@ impl GaRunner {
         problem: &P,
         config: &GaConfig,
         cancel: Option<Arc<AtomicBool>>,
-    ) -> Result<GaResult<P::Individual>, String> {
+    ) -> Result<GaResult<P::Individual>, ConfigError> {
         config.validate()?;
 
         let mut rng = match config.seed {

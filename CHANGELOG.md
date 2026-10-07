@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Maintained from 0.2.1 onward; earlier entries list release dates only (see git history).
 
+## [Unreleased]
+
+### Changed
+
+- **Breaking:** `GaConfig`, `BrkgaConfig`, `SaConfig` and `AlnsConfig` `validate()`,
+  and `GaRunner`, `BrkgaRunner`, `SaRunner` and `AlnsRunner` `run`, return
+  `ConfigError` instead of `String`: `OutOfRange { parameter, min, max, got, range }`
+  for a value outside what the setting accepts, `Invalid { parameter, reason }` for a
+  setting wrong only beside the others (an elite ratio that leaves no elite) or a
+  missing operator. `parameter()` names the field; `Display` reads as before
+  (`population_size must be at least 2, got 1`).
+
 ## [0.6.3] - 2026-10-07
 
 ### Fixed
