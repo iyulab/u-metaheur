@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Maintained from 0.2.1 onward; earlier entries list release dates only (see git history).
 
+## [Unreleased]
+
+### Changed
+
+- **Breaking:** `ConfigError::OutOfRange` reports an open (excluded) bound apart
+  from a closed one: new fields `exclusive_min` and `exclusive_max`, while `min`
+  and `max` now hold closed bounds only. A side carries at most one of its two —
+  `initial_temperature` (> 0) is refused with `exclusive_min: Some(0.0)`,
+  `min: None`; `reaction_factor` in (0, 1] with `exclusive_min: Some(0.0)`,
+  `max: Some(1.0)`; `cooling.alpha` in (0, 1) with both `exclusive_*`. These
+  bounds used to be reported as `min` / `max`, as if included. `Display` is
+  unchanged.
+- **Breaking:** WebAssembly: a `parameter_out_of_range` refusal carries an open
+  bound as `exclusive_min` / `exclusive_max` instead of `min` / `max`.
+  `initial_temp ≤ 0` is refused as `{ min: null, max: null, exclusive_min: 0 }`,
+  `cooling_rate` outside (0, 1) as `{ min: null, max: null, exclusive_min: 0,
+  exclusive_max: 1 }`. `min` and `max` are still always present; the
+  `exclusive_*` fields appear only on an open end, so a refusal with closed
+  bounds only (`mutation_rate` in [0, 1]) keeps its shape.
+
 ## [0.7.0] - 2026-10-07
 
 Depends on u-numflow 0.10.

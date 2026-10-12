@@ -274,8 +274,7 @@ impl GaConfig {
         if self.population_size < 2 {
             return Err(ConfigError::out_of_range(
                 "population_size",
-                Some(2.0),
-                None,
+                2.0..,
                 self.population_size as f64,
                 "at least 2",
             ));
@@ -283,8 +282,7 @@ impl GaConfig {
         if self.max_generations == 0 {
             return Err(ConfigError::out_of_range(
                 "max_generations",
-                Some(1.0),
-                None,
+                1.0..,
                 0.0,
                 "at least 1",
             ));
@@ -297,8 +295,7 @@ impl GaConfig {
             if !(0.0..=1.0).contains(&value) {
                 return Err(ConfigError::out_of_range(
                     name,
-                    Some(0.0),
-                    Some(1.0),
+                    0.0..=1.0,
                     value,
                     "in [0, 1]",
                 ));
@@ -326,8 +323,7 @@ impl GaConfig {
         if !(self.convergence_threshold.is_finite() && self.convergence_threshold >= 0.0) {
             return Err(ConfigError::out_of_range(
                 "convergence_threshold",
-                Some(0.0),
-                None,
+                0.0..,
                 self.convergence_threshold,
                 "finite and at least 0",
             ));
@@ -335,8 +331,7 @@ impl GaConfig {
         if self.time_limit_ms == Some(0) {
             return Err(ConfigError::out_of_range(
                 "time_limit_ms",
-                Some(1.0),
-                None,
+                1.0..,
                 0.0,
                 "positive (or unset)",
             ));

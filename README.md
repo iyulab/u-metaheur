@@ -153,14 +153,14 @@ import { run_sa } from '@iyulab/u-metaheur';
 try {
   run_sa({ nodes: [[0, 0], [1, 0], [1, 1]], cooling_rate: 1 });
 } catch (err) {
-  console.log(err.code, err.parameter, err.min, err.max, err.got); // parameter_out_of_range cooling_rate 0 1 1
+  console.log(err.code, err.parameter, err.exclusive_min, err.exclusive_max, err.got); // parameter_out_of_range cooling_rate 0 1 1
 }
 ```
 
 | `code` | Fields | Meaning |
 |---|---|---|
 | `insufficient_data` | `parameter` (`"nodes"`), `min`, `got` | Fewer than 2 nodes |
-| `parameter_out_of_range` | `parameter`, `min`, `max` (or `null`), `got` | `population_size < 2`, `generations` or `iterations` of 0, `initial_temp ≤ 0`, or `cooling_rate` outside (0, 1) — the message says whether a bound is included |
+| `parameter_out_of_range` | `parameter`, `min`, `max`, `exclusive_min`, `exclusive_max`, `got` | `population_size < 2`, `generations` or `iterations` of 0, `initial_temp ≤ 0`, or `cooling_rate` outside (0, 1). `min` / `max` are the closed (included) bounds and are always present — `null` on a side that is open or unbounded; `exclusive_min` / `exclusive_max` are the open (excluded) bounds, present only when that end is open: `initial_temp` (> 0) is refused with `min: null, exclusive_min: 0`, `cooling_rate` with `exclusive_min: 0, exclusive_max: 1` |
 | `value_not_finite` | `parameter`, `index` | A NaN or ±Infinity anywhere in an argument — `parameter` is the path to it (`config.nodes[1]`), `index` its position in that array, or `null` |
 | `malformed_input` | `parameter` | An argument of the wrong shape or type (a missing or unknown key), or a JSON string |
 

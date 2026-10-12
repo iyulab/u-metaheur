@@ -1,6 +1,7 @@
 //! ALNS configuration.
 
 use crate::ConfigError;
+use std::ops::Bound::{Excluded, Included, Unbounded};
 
 /// Configuration for the ALNS algorithm.
 ///
@@ -152,8 +153,7 @@ impl AlnsConfig {
         if self.max_iterations == 0 {
             return Err(ConfigError::out_of_range(
                 "max_iterations",
-                Some(1.0),
-                None,
+                1.0..,
                 0.0,
                 "at least 1",
             ));
@@ -161,8 +161,7 @@ impl AlnsConfig {
         if !(self.reaction_factor > 0.0 && self.reaction_factor <= 1.0) {
             return Err(ConfigError::out_of_range(
                 "reaction_factor",
-                Some(0.0),
-                Some(1.0),
+                (Excluded(0.0), Included(1.0)),
                 self.reaction_factor,
                 "in (0, 1]",
             ));
@@ -170,8 +169,7 @@ impl AlnsConfig {
         if !(self.cooling_rate > 0.0 && self.cooling_rate < 1.0) {
             return Err(ConfigError::out_of_range(
                 "cooling_rate",
-                Some(0.0),
-                Some(1.0),
+                (Excluded(0.0), Excluded(1.0)),
                 self.cooling_rate,
                 "in (0, 1)",
             ));
@@ -179,8 +177,7 @@ impl AlnsConfig {
         if !(self.initial_temperature > 0.0 && self.initial_temperature.is_finite()) {
             return Err(ConfigError::out_of_range(
                 "initial_temperature",
-                Some(0.0),
-                None,
+                (Excluded(0.0), Unbounded),
                 self.initial_temperature,
                 "positive and finite",
             ));
@@ -188,8 +185,7 @@ impl AlnsConfig {
         if !(self.min_temperature > 0.0 && self.min_temperature.is_finite()) {
             return Err(ConfigError::out_of_range(
                 "min_temperature",
-                Some(0.0),
-                None,
+                (Excluded(0.0), Unbounded),
                 self.min_temperature,
                 "positive and finite",
             ));
@@ -199,8 +195,7 @@ impl AlnsConfig {
             if !(0.0..=1.0).contains(&value) {
                 return Err(ConfigError::out_of_range(
                     name,
-                    Some(0.0),
-                    Some(1.0),
+                    0.0..=1.0,
                     value,
                     "in [0, 1]",
                 ));

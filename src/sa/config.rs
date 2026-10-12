@@ -1,6 +1,7 @@
 //! SA configuration and cooling schedules.
 
 use crate::ConfigError;
+use std::ops::Bound::{Excluded, Unbounded};
 
 /// Cooling schedule for temperature reduction.
 ///
@@ -127,8 +128,7 @@ impl SaConfig {
         if !(self.initial_temperature > 0.0 && self.initial_temperature.is_finite()) {
             return Err(ConfigError::out_of_range(
                 "initial_temperature",
-                Some(0.0),
-                None,
+                (Excluded(0.0), Unbounded),
                 self.initial_temperature,
                 "positive and finite",
             ));
@@ -136,8 +136,7 @@ impl SaConfig {
         if !(self.min_temperature > 0.0 && self.min_temperature.is_finite()) {
             return Err(ConfigError::out_of_range(
                 "min_temperature",
-                Some(0.0),
-                None,
+                (Excluded(0.0), Unbounded),
                 self.min_temperature,
                 "positive and finite",
             ));
@@ -156,8 +155,7 @@ impl SaConfig {
                 if !(alpha > 0.0 && alpha < 1.0) {
                     return Err(ConfigError::out_of_range(
                         "cooling.alpha",
-                        Some(0.0),
-                        Some(1.0),
+                        (Excluded(0.0), Excluded(1.0)),
                         alpha,
                         "in (0, 1)",
                     ));
@@ -167,8 +165,7 @@ impl SaConfig {
                 if !(beta > 0.0 && beta.is_finite()) {
                     return Err(ConfigError::out_of_range(
                         "cooling.beta",
-                        Some(0.0),
-                        None,
+                        (Excluded(0.0), Unbounded),
                         beta,
                         "positive and finite",
                     ));
@@ -200,7 +197,18 @@ mod tests {
     #[test]
     fn test_validate_bad_temperature() {
         let config = SaConfig::default().with_initial_temperature(-1.0);
-        assert!(config.validate().is_err());
+        // Positive: zero itself is refused, so the bound is open.
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::OutOfRange {
+                parameter: "initial_temperature",
+                min: None,
+                exclusive_min: Some(0.0),
+                max: None,
+                exclusive_max: None,
+                ..
+            })
+        ));
     }
 
     #[test]

@@ -1,6 +1,7 @@
 //! BRKGA configuration.
 
 use crate::ConfigError;
+use std::ops::Bound::{Excluded, Included};
 
 /// Configuration for the BRKGA algorithm.
 ///
@@ -117,8 +118,7 @@ impl BrkgaConfig {
         if self.chromosome_length == 0 {
             return Err(ConfigError::out_of_range(
                 "chromosome_length",
-                Some(1.0),
-                None,
+                1.0..,
                 0.0,
                 "at least 1",
             ));
@@ -126,8 +126,7 @@ impl BrkgaConfig {
         if self.population_size < 3 {
             return Err(ConfigError::out_of_range(
                 "population_size",
-                Some(3.0),
-                None,
+                3.0..,
                 self.population_size as f64,
                 "at least 3",
             ));
@@ -139,8 +138,7 @@ impl BrkgaConfig {
             if !(0.0..=1.0).contains(&value) {
                 return Err(ConfigError::out_of_range(
                     name,
-                    Some(0.0),
-                    Some(1.0),
+                    0.0..=1.0,
                     value,
                     "in [0, 1]",
                 ));
@@ -168,8 +166,7 @@ impl BrkgaConfig {
         if !(self.elite_inheritance_prob > 0.5 && self.elite_inheritance_prob <= 1.0) {
             return Err(ConfigError::out_of_range(
                 "elite_inheritance_prob",
-                Some(0.5),
-                Some(1.0),
+                (Excluded(0.5), Included(1.0)),
                 self.elite_inheritance_prob,
                 "in (0.5, 1]",
             ));
@@ -177,8 +174,7 @@ impl BrkgaConfig {
         if self.max_generations == 0 {
             return Err(ConfigError::out_of_range(
                 "max_generations",
-                Some(1.0),
-                None,
+                1.0..,
                 0.0,
                 "at least 1",
             ));
@@ -229,6 +225,20 @@ mod tests {
                 .expect_err("outside (0.5, 1]");
             assert_eq!(err.parameter(), "elite_inheritance_prob");
             assert!(err.to_string().contains(&format!("got {p}")), "{err}");
+            // (0.5, 1]: the lower end is open, the upper closed.
+            assert!(
+                matches!(
+                    err,
+                    ConfigError::OutOfRange {
+                        min: None,
+                        exclusive_min: Some(0.5),
+                        max: Some(1.0),
+                        exclusive_max: None,
+                        ..
+                    }
+                ),
+                "{err:?}"
+            );
         }
         assert!(BrkgaConfig::new(10)
             .with_elite_inheritance_prob(1.0)

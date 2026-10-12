@@ -31,11 +31,17 @@
 //!
 //! Every refusal throws an `Error` whose `message` is readable text and which
 //! carries `code` -- a stable reason -- and the values behind it
-//! (`parameter`, `min`, `max`, `got`). See the README's *Errors*.
+//! (`parameter`, `min`, `max`, `exclusive_min`, `exclusive_max`, `got`). See
+//! the README's *Errors*.
+
+use std::ops::Bound::{Excluded, Unbounded};
+use std::ops::RangeBounds;
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use wasm_bindgen::prelude::*;
+
+use crate::config_error::Bounds;
 
 // ============================================================================
 // Shared utilities
@@ -72,20 +78,33 @@ impl WireError {
         )
     }
 
-    /// A setting outside the range the solver accepts. `max` is `None` when
-    /// the range is open above; the message says whether a bound is included.
+    /// A setting outside the range the solver accepts, each end open or closed
+    /// as it is. A closed end goes out as `min` / `max`, an open end as
+    /// `exclusive_min` / `exclusive_max`; `min` and `max` are always present
+    /// (`null` on a side that is open or unbounded), the `exclusive_*` fields
+    /// only when that end is open.
     fn out_of_range(
         parameter: &str,
-        min: f64,
-        max: Option<f64>,
+        accepted: impl RangeBounds<f64>,
         got: f64,
         message: String,
     ) -> Self {
-        Self::new(
-            "parameter_out_of_range",
-            message,
-            json!({ "parameter": parameter, "min": min, "max": max, "got": got }),
-        )
+        let bounds = Bounds::of(accepted);
+        let mut fields = json!({
+            "parameter": parameter,
+            "min": bounds.min,
+            "max": bounds.max,
+            "got": got,
+        });
+        for (key, open) in [
+            ("exclusive_min", bounds.exclusive_min),
+            ("exclusive_max", bounds.exclusive_max),
+        ] {
+            if let Some(value) = open {
+                fields[key] = json!(value);
+            }
+        }
+        Self::new("parameter_out_of_range", message, fields)
     }
 
     /// Fewer nodes than a tour needs.
@@ -292,8 +311,7 @@ fn check_ga(config: &GaConfig) -> Result<(), WireError> {
     if config.population_size < 2 {
         return Err(WireError::out_of_range(
             "population_size",
-            2.0,
-            None,
+            2.0..,
             config.population_size as f64,
             format!(
                 "population_size must be at least 2, got {}",
@@ -304,8 +322,7 @@ fn check_ga(config: &GaConfig) -> Result<(), WireError> {
     if config.generations == 0 {
         return Err(WireError::out_of_range(
             "generations",
-            1.0,
-            None,
+            1.0..,
             0.0,
             "generations must be at least 1, got 0".to_string(),
         ));
@@ -313,8 +330,7 @@ fn check_ga(config: &GaConfig) -> Result<(), WireError> {
     if !(0.0..=1.0).contains(&config.mutation_rate) {
         return Err(WireError::out_of_range(
             "mutation_rate",
-            0.0,
-            Some(1.0),
+            0.0..=1.0,
             config.mutation_rate,
             format!(
                 "mutation_rate must be in [0, 1], got {}",
@@ -333,8 +349,7 @@ fn check_sa(config: &SaConfig) -> Result<(), WireError> {
     if config.initial_temp <= 0.0 {
         return Err(WireError::out_of_range(
             "initial_temp",
-            0.0,
-            None,
+            (Excluded(0.0), Unbounded),
             config.initial_temp,
             format!(
                 "initial_temp must be positive (> 0), got {}",
@@ -345,8 +360,7 @@ fn check_sa(config: &SaConfig) -> Result<(), WireError> {
     if config.cooling_rate <= 0.0 || config.cooling_rate >= 1.0 {
         return Err(WireError::out_of_range(
             "cooling_rate",
-            0.0,
-            Some(1.0),
+            (Excluded(0.0), Excluded(1.0)),
             config.cooling_rate,
             format!(
                 "cooling_rate must be in (0, 1), both excluded, got {}",
@@ -357,8 +371,7 @@ fn check_sa(config: &SaConfig) -> Result<(), WireError> {
     if config.iterations == 0 {
         return Err(WireError::out_of_range(
             "iterations",
-            1.0,
-            None,
+            1.0..,
             0.0,
             "iterations must be at least 1, got 0".to_string(),
         ));
@@ -837,9 +850,27 @@ mod tests {
             json!({
                 "code": "parameter_out_of_range",
                 "parameter": "cooling_rate",
-                "min": 0.0,
-                "max": 1.0,
+                "min": null,
+                "max": null,
+                "exclusive_min": 0.0,
+                "exclusive_max": 1.0,
                 "got": 1.0,
+            })
+        );
+        let err = check_sa(&SaConfig {
+            initial_temp: 0.0,
+            ..sa
+        })
+        .expect_err("a temperature of zero");
+        assert_eq!(
+            err.fields,
+            json!({
+                "code": "parameter_out_of_range",
+                "parameter": "initial_temp",
+                "min": null,
+                "max": null,
+                "exclusive_min": 0.0,
+                "got": 0.0,
             })
         );
     }
