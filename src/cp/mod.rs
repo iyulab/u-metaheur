@@ -9,6 +9,7 @@
 //! - **Constraints**: [`Constraint`] — NoOverlap, Cumulative, Precedence, etc.
 //! - **Model**: [`CpModel`] — container for variables, constraints, objective
 //! - **Solver**: [`CpSolver`] trait — interface for solver implementations
+//! - **Check**: [`CpModel::check`] — every [`CpViolation`] of a solution against its model
 //!
 //! # Design
 //!
@@ -23,10 +24,12 @@
 //!
 //! Rossi, van Beek & Walsh (2006), "Handbook of Constraint Programming"
 
+mod check;
 mod model;
 mod solver;
 mod variables;
 
+pub use check::CpViolation;
 pub use model::{Constraint, CpModel, Objective};
 pub use solver::{
     CpSolution, CpSolver, IntervalSolution, SimpleCpSolver, SolverConfig, SolverStatus,

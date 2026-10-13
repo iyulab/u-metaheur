@@ -122,11 +122,20 @@ pub trait CpSolver {
 /// Places intervals sequentially respecting no-overlap and precedence
 /// constraints. This is a trivial heuristic, not a real CP solver.
 ///
+/// The placement is then [checked](CpModel::check) against the whole model:
+/// it is reported `Feasible` only when it breaks nothing, and `Unknown`
+/// otherwise -- a start or end outside its domain, past the horizon, or a
+/// constraint the greedy pass does not place by (cumulative, same start/end,
+/// alternative) that it happens to break. The intervals are returned either
+/// way, so a caller can see what was tried.
+///
 /// # Limitations
 ///
-/// - Only handles NoOverlap and Precedence constraints
-/// - Does not optimize: just finds a feasible solution
-/// - Does not support cumulative or alternative constraints
+/// - Places by NoOverlap and Precedence only; other constraints are checked,
+///   not satisfied
+/// - Does not optimize: one greedy pass
+/// - Reads no [`SolverConfig`] setting: a single pass has no time to limit,
+///   no workers to spread and no second solution to stop before
 pub struct SimpleCpSolver;
 
 impl SimpleCpSolver {
@@ -261,6 +270,12 @@ impl CpSolver for SimpleCpSolver {
         // Compute objective
         if let Some(Objective::MinimizeMaxEnd) = &model.objective {
             solution.objective_value = Some(solution.max_end() as f64);
+        }
+
+        // The pass places by precedence and no-overlap only, from each start's
+        // lower bound; whatever else the model asks is checked, not assumed.
+        if solution.status == SolverStatus::Feasible && !model.check(&solution).is_empty() {
+            solution.status = SolverStatus::Unknown;
         }
 
         solution
