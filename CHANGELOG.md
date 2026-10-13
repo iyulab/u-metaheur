@@ -32,6 +32,26 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   got: -1 }`, as `1` is — instead of `malformed_input` ("invalid value: integer
   `-1`, expected usize"). A count with a fractional part (`2.5`) stays
   `malformed_input`, naming the field and saying it must be a whole number.
+- **Breaking:** a setting whose accepted range ends at another setting is
+  `ConfigError::OutOfRange` with that end as a bound, previously
+  `ConfigError::Invalid` with the bound only in the text:
+  `SaConfig::min_temperature` lies in (0, `initial_temperature`) (one range for a
+  floor too high or not positive), `AlnsConfig::min_destroy_degree` in
+  [0, `max_destroy_degree`], and `BrkgaConfig::mutant_fraction` in
+  [0, 1 − `elite_fraction`) — the elites and mutants together leave room for
+  offspring.
+- **Breaking:** `GaConfig::elite_ratio` and `BrkgaConfig::elite_fraction` accept
+  [0, 1): a ratio of 1, which makes every individual an elite in any population,
+  is `ConfigError::OutOfRange` with `exclusive_max: Some(1.0)`, previously
+  `ConfigError::Invalid`. An elite ratio that leaves no elite in the population
+  given stays `Invalid` — it depends on the population size, not on a range.
+
+### Fixed
+
+- `AlnsRunner` panicked when `min_destroy_degree` equalled `max_destroy_degree`,
+  a setting `AlnsConfig::validate` accepts: the degree was drawn from the half-open
+  range `min..max`, which is empty. It is drawn from `[min, max]`, so equal ends
+  are a fixed degree.
 
 ## [0.7.0] - 2026-10-07
 

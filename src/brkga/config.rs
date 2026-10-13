@@ -131,26 +131,23 @@ impl BrkgaConfig {
                 "at least 3",
             ));
         }
-        for (name, value) in [
-            ("elite_fraction", self.elite_fraction),
-            ("mutant_fraction", self.mutant_fraction),
-        ] {
-            if !(0.0..=1.0).contains(&value) {
-                return Err(ConfigError::out_of_range(
-                    name,
-                    0.0..=1.0,
-                    value,
-                    "in [0, 1]",
-                ));
-            }
+        // Elites and mutants together leave room for offspring: the elites
+        // take less than the whole population, the mutants less than the rest.
+        if !(0.0..1.0).contains(&self.elite_fraction) {
+            return Err(ConfigError::out_of_range(
+                "elite_fraction",
+                (Included(0.0), Excluded(1.0)),
+                self.elite_fraction,
+                "in [0, 1)",
+            ));
         }
-        if self.elite_fraction + self.mutant_fraction >= 1.0 {
-            return Err(ConfigError::invalid(
+        let room = 1.0 - self.elite_fraction;
+        if !(0.0..room).contains(&self.mutant_fraction) {
+            return Err(ConfigError::out_of_range(
                 "mutant_fraction",
-                format!(
-                    "elite_fraction ({}) + mutant_fraction ({}) must be < 1.0",
-                    self.elite_fraction, self.mutant_fraction
-                ),
+                (Included(0.0), Excluded(room)),
+                self.mutant_fraction,
+                "in [0, 1 - elite_fraction)",
             ));
         }
         let elite_count = (self.population_size as f64 * self.elite_fraction) as usize;
@@ -202,12 +199,41 @@ mod tests {
         assert!(BrkgaConfig::new(10).validate().is_ok());
     }
 
+    /// The mutants take less than what the elites leave: a range for
+    /// `mutant_fraction` whose open upper end is `1 - elite_fraction`.
     #[test]
     fn test_validate_fractions_sum() {
         let config = BrkgaConfig::new(10)
-            .with_elite_fraction(0.6)
-            .with_mutant_fraction(0.5);
-        assert!(config.validate().is_err());
+            .with_elite_fraction(0.5)
+            .with_mutant_fraction(0.75);
+        assert_eq!(
+            config.validate(),
+            Err(ConfigError::OutOfRange {
+                parameter: "mutant_fraction",
+                min: Some(0.0),
+                max: None,
+                exclusive_min: None,
+                exclusive_max: Some(0.5),
+                got: 0.75,
+                range: "in [0, 1 - elite_fraction)",
+            })
+        );
+        // The elites alone may not fill the population either.
+        let config = BrkgaConfig::new(10)
+            .with_elite_fraction(1.0)
+            .with_mutant_fraction(0.0);
+        assert_eq!(
+            config.validate(),
+            Err(ConfigError::OutOfRange {
+                parameter: "elite_fraction",
+                min: Some(0.0),
+                max: None,
+                exclusive_min: None,
+                exclusive_max: Some(1.0),
+                got: 1.0,
+                range: "in [0, 1)",
+            })
+        );
     }
 
     #[test]

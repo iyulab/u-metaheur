@@ -202,9 +202,11 @@ impl AlnsConfig {
             }
         }
         if min > max {
-            return Err(ConfigError::invalid(
+            return Err(ConfigError::out_of_range(
                 "min_destroy_degree",
-                format!("must not exceed max_destroy_degree ({max}), got {min}"),
+                0.0..=max,
+                min,
+                "in [0, max_destroy_degree]",
             ));
         }
         Ok(())
@@ -285,5 +287,20 @@ mod tests {
             .with_destroy_degree(0.1, 0.4)
             .validate()
             .is_ok());
+        // Above the maximum: the range is `[0, max_destroy_degree]`.
+        assert_eq!(
+            AlnsConfig::default()
+                .with_destroy_degree(0.5, 0.2)
+                .validate(),
+            Err(ConfigError::OutOfRange {
+                parameter: "min_destroy_degree",
+                min: Some(0.0),
+                max: Some(0.2),
+                exclusive_min: None,
+                exclusive_max: None,
+                got: 0.5,
+                range: "in [0, max_destroy_degree]",
+            })
+        );
     }
 }

@@ -191,8 +191,9 @@ impl AlnsRunner {
             let d_idx = roulette_select(&destroy_stats, &mut rng);
             let r_idx = roulette_select(&repair_stats, &mut rng);
 
-            // Determine destroy degree
-            let degree = rng.random_range(config.min_destroy_degree..config.max_destroy_degree);
+            // Determine destroy degree: `[min, max]`, the range the settings
+            // check accepts -- equal ends are a fixed degree.
+            let degree = rng.random_range(config.min_destroy_degree..=config.max_destroy_degree);
 
             // Destroy then repair
             let destroyed = destroy_ops[d_idx].destroy(&current, degree, &mut rng);
@@ -446,6 +447,23 @@ mod tests {
             result.best_cost
         );
         assert_eq!(result.iterations, 500);
+    }
+
+    /// Equal ends are a fixed degree, which the settings check accepts: the
+    /// run must draw that degree, not refuse to sample an empty range.
+    #[test]
+    fn a_fixed_destroy_degree_runs() {
+        let problem = SubsetProblem { n: 10 };
+        let destroy_ops = [TestDestroy::Random(RandomDestroy)];
+        let repair_ops = [TestRepair::Greedy(GreedyRepair)];
+        let config = AlnsConfig::default()
+            .with_max_iterations(20)
+            .with_destroy_degree(0.3, 0.3)
+            .with_seed(7);
+        assert!(config.validate().is_ok());
+        let result = AlnsRunner::run(&problem, &destroy_ops, &repair_ops, &config)
+            .expect("a fixed degree is a valid setting");
+        assert_eq!(result.iterations, 20);
     }
 
     #[test]

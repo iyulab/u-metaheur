@@ -133,21 +133,14 @@ impl SaConfig {
                 "positive and finite",
             ));
         }
-        if !(self.min_temperature > 0.0 && self.min_temperature.is_finite()) {
+        // The run cools from `initial_temperature` down to `min_temperature`,
+        // so the floor lies strictly between 0 and the start.
+        if !(self.min_temperature > 0.0 && self.min_temperature < self.initial_temperature) {
             return Err(ConfigError::out_of_range(
                 "min_temperature",
-                (Excluded(0.0), Unbounded),
+                (Excluded(0.0), Excluded(self.initial_temperature)),
                 self.min_temperature,
-                "positive and finite",
-            ));
-        }
-        if self.min_temperature >= self.initial_temperature {
-            return Err(ConfigError::invalid(
-                "min_temperature",
-                format!(
-                    "must be less than initial_temperature ({}), got {}",
-                    self.initial_temperature, self.min_temperature
-                ),
+                "in (0, initial_temperature)",
             ));
         }
         match self.cooling {
@@ -211,12 +204,28 @@ mod tests {
         ));
     }
 
+    /// The floor lies strictly between 0 and the start: one range, whose open
+    /// upper end is `initial_temperature`, for a floor too high or not positive.
     #[test]
     fn test_validate_min_ge_initial() {
-        let config = SaConfig::default()
-            .with_initial_temperature(10.0)
-            .with_min_temperature(20.0);
-        assert!(config.validate().is_err());
+        for min in [20.0, 10.0, 0.0, -1.0] {
+            let config = SaConfig::default()
+                .with_initial_temperature(10.0)
+                .with_min_temperature(min);
+            assert_eq!(
+                config.validate(),
+                Err(ConfigError::OutOfRange {
+                    parameter: "min_temperature",
+                    min: None,
+                    max: None,
+                    exclusive_min: Some(0.0),
+                    exclusive_max: Some(10.0),
+                    got: min,
+                    range: "in (0, initial_temperature)",
+                }),
+                "min_temperature {min}"
+            );
+        }
     }
 
     #[test]

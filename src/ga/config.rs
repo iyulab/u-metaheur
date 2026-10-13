@@ -4,6 +4,7 @@
 
 use super::selection::Selection;
 use crate::ConfigError;
+use std::ops::Bound::{Excluded, Included};
 
 /// Configuration for the Genetic Algorithm.
 ///
@@ -287,8 +288,17 @@ impl GaConfig {
                 "at least 1",
             ));
         }
+        // An elite ratio of 1 makes every individual an elite, leaving no
+        // room for offspring in any population.
+        if !(0.0..1.0).contains(&self.elite_ratio) {
+            return Err(ConfigError::out_of_range(
+                "elite_ratio",
+                (Included(0.0), Excluded(1.0)),
+                self.elite_ratio,
+                "in [0, 1)",
+            ));
+        }
         for (name, value) in [
-            ("elite_ratio", self.elite_ratio),
             ("crossover_rate", self.crossover_rate),
             ("mutation_rate", self.mutation_rate),
         ] {
@@ -401,12 +411,25 @@ mod tests {
         assert!(config.validate().is_err());
     }
 
+    /// A ratio of 1 makes every individual an elite whatever the population:
+    /// a range refusal with the open end at 1, not a combination.
     #[test]
     fn test_validate_elite_too_high() {
         let config = GaConfig::default()
             .with_population_size(10)
             .with_elite_ratio(1.0);
-        assert!(config.validate().is_err());
+        assert_eq!(
+            config.validate(),
+            Err(ConfigError::OutOfRange {
+                parameter: "elite_ratio",
+                min: Some(0.0),
+                max: None,
+                exclusive_min: None,
+                exclusive_max: Some(1.0),
+                got: 1.0,
+                range: "in [0, 1)",
+            })
+        );
     }
 
     #[test]
@@ -433,7 +456,6 @@ mod tests {
     #[test]
     fn rates_outside_0_1_are_refused_not_clamped() {
         for config in [
-            GaConfig::default().with_elite_ratio(1.5),
             GaConfig::default().with_crossover_rate(-0.5),
             GaConfig::default().with_mutation_rate(2.0),
             GaConfig::default().with_mutation_rate(f64::NAN),
