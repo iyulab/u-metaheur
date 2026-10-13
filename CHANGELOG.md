@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Maintained from 0.2.1 onward; earlier entries list release dates only (see git history).
 
+## [Unreleased]
+
+### Added
+
+- `CpModel::check(&solution) -> Vec<CpViolation>`: every way a CP solution
+  breaks its model — a start, end or duration outside its domain, an end past
+  the horizon, `end ≠ start + duration`, a missing mandatory interval, and each
+  constraint (overlap, precedence gap, over-capacity, start/end not together,
+  alternative count). An absent optional interval is exempt, as in CP generally.
+
+### Changed
+
+- `SimpleCpSolver` checks its own placement against the model and reports
+  `Unknown` instead of `Feasible` when it breaks anything — it placed from each
+  start's lower bound by precedence and no-overlap only, and called the result
+  feasible even past the horizon, outside a start's domain, or over a
+  cumulative capacity. The intervals are still returned. Its documentation now
+  says it reads no `SolverConfig` setting.
+
 ## [0.8.1] - 2026-10-13
 
 Depends on u-numflow 0.12.
