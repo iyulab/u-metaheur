@@ -303,30 +303,105 @@ fn failure_site(param: &str, path: &serde_path_to_error::Path) -> (String, Optio
     (name, index)
 }
 
+// ============================================================================
+// Whole numbers
+// ============================================================================
+
+/// A whole number exactly as the caller wrote it: any integer, or a number
+/// with no fractional part.
+///
+/// Counts are read through this rather than straight into `usize`. As a
+/// `usize`, `-1` failed as a type mismatch ("invalid value: integer `-1`,
+/// expected usize", `malformed_input`) while `1` was refused by the range
+/// check -- two answers to one mistake. Read signed and wide, every whole
+/// number reaches the range check, which names the accepted range ([`count`]).
+/// A fractional part is refused here: whether a count is whole is a matter of
+/// its type, so `2.5` is `malformed_input`.
+struct Whole(i128);
+
+impl<'de> Deserialize<'de> for Whole {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct WholeVisitor;
+
+        impl serde::de::Visitor<'_> for WholeVisitor {
+            type Value = Whole;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a whole number")
+            }
+
+            fn visit_i64<E>(self, v: i64) -> Result<Whole, E> {
+                Ok(Whole(v.into()))
+            }
+
+            fn visit_u64<E>(self, v: u64) -> Result<Whole, E> {
+                Ok(Whole(v.into()))
+            }
+
+            fn visit_f64<E: serde::de::Error>(self, v: f64) -> Result<Whole, E> {
+                if v.fract() == 0.0 {
+                    // `as` saturates only past ±1.7e38, far outside every
+                    // range a setting accepts.
+                    Ok(Whole(v as i128))
+                } else {
+                    Err(E::custom(format_args!("must be a whole number, got {v}")))
+                }
+            }
+        }
+
+        deserializer.deserialize_any(WholeVisitor)
+    }
+}
+
+/// Reads a whole-number field (`#[serde(deserialize_with = "whole")]`); see
+/// [`Whole`].
+fn whole<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<i128, D::Error> {
+    Whole::deserialize(deserializer).map(|w| w.0)
+}
+
+/// A whole-number setting as the `usize` the solver counts in.
+///
+/// Below `min` -- a negative count as much as a too-small one -- it is
+/// refused as `parameter_out_of_range` with `min` and no upper bound; above
+/// the largest `usize` the target holds, with that as `max`.
+fn count(parameter: &str, value: i128, min: i128) -> Result<usize, WireError> {
+    if value < min {
+        return Err(WireError::out_of_range(
+            parameter,
+            min as f64..,
+            value as f64,
+            format!("{parameter} must be at least {min}, got {value}"),
+        ));
+    }
+    usize::try_from(value).map_err(|_| {
+        WireError::out_of_range(
+            parameter,
+            min as f64..=usize::MAX as f64,
+            value as f64,
+            format!(
+                "{parameter} must be from {min} to {}, got {value}",
+                usize::MAX
+            ),
+        )
+    })
+}
+
+/// The counts `run_ga` runs with, once [`check_ga`] has accepted them.
+#[derive(Debug, PartialEq)]
+struct GaCounts {
+    population_size: usize,
+    generations: usize,
+}
+
 /// The settings `run_ga` refuses.
-fn check_ga(config: &GaConfig) -> Result<(), WireError> {
+fn check_ga(config: &GaConfig) -> Result<GaCounts, WireError> {
     if config.nodes.len() < 2 {
         return Err(WireError::too_few_nodes(config.nodes.len()));
     }
-    if config.population_size < 2 {
-        return Err(WireError::out_of_range(
-            "population_size",
-            2.0..,
-            config.population_size as f64,
-            format!(
-                "population_size must be at least 2, got {}",
-                config.population_size
-            ),
-        ));
-    }
-    if config.generations == 0 {
-        return Err(WireError::out_of_range(
-            "generations",
-            1.0..,
-            0.0,
-            "generations must be at least 1, got 0".to_string(),
-        ));
-    }
+    let counts = GaCounts {
+        population_size: count("population_size", config.population_size, 2)?,
+        generations: count("generations", config.generations, 1)?,
+    };
     if !(0.0..=1.0).contains(&config.mutation_rate) {
         return Err(WireError::out_of_range(
             "mutation_rate",
@@ -338,11 +413,11 @@ fn check_ga(config: &GaConfig) -> Result<(), WireError> {
             ),
         ));
     }
-    Ok(())
+    Ok(counts)
 }
 
-/// The settings `run_sa` refuses.
-fn check_sa(config: &SaConfig) -> Result<(), WireError> {
+/// The settings `run_sa` refuses; the iteration count it runs with.
+fn check_sa(config: &SaConfig) -> Result<usize, WireError> {
     if config.nodes.len() < 2 {
         return Err(WireError::too_few_nodes(config.nodes.len()));
     }
@@ -368,15 +443,7 @@ fn check_sa(config: &SaConfig) -> Result<(), WireError> {
             ),
         ));
     }
-    if config.iterations == 0 {
-        return Err(WireError::out_of_range(
-            "iterations",
-            1.0..,
-            0.0,
-            "iterations must be at least 1, got 0".to_string(),
-        ));
-    }
-    Ok(())
+    count("iterations", config.iterations, 1)
 }
 
 /// Euclidean distance between two 2-D nodes.
@@ -481,21 +548,23 @@ fn shuffle(slice: &mut [usize], rng: &mut WasmRng) {
 #[serde(deny_unknown_fields)]
 struct GaConfig {
     nodes: Vec<[f64; 2]>,
-    #[serde(default = "default_pop_size")]
-    #[tsify(optional)]
-    population_size: usize,
-    #[serde(default = "default_generations")]
-    #[tsify(optional)]
-    generations: usize,
+    /// At least 2 (`run_ga` checks it; see [`Whole`] for why it is signed).
+    #[serde(default = "default_pop_size", deserialize_with = "whole")]
+    #[tsify(optional, type = "number")]
+    population_size: i128,
+    /// At least 1.
+    #[serde(default = "default_generations", deserialize_with = "whole")]
+    #[tsify(optional, type = "number")]
+    generations: i128,
     #[serde(default = "default_mutation_rate")]
     #[tsify(optional)]
     mutation_rate: f64,
 }
 
-fn default_pop_size() -> usize {
+fn default_pop_size() -> i128 {
     100
 }
-fn default_generations() -> usize {
+fn default_generations() -> i128 {
     200
 }
 fn default_mutation_rate() -> f64 {
@@ -562,7 +631,10 @@ pub fn run_ga(
     #[wasm_bindgen(unchecked_param_type = "GaConfig")] config: JsValue,
 ) -> Result<JsValue, JsValue> {
     let config: GaConfig = from_js(config, "config")?;
-    check_ga(&config).map_err(js_err)?;
+    let GaCounts {
+        population_size,
+        generations,
+    } = check_ga(&config).map_err(js_err)?;
     let n = config.nodes.len();
 
     let mut rng = WasmRng::new();
@@ -572,7 +644,7 @@ pub fn run_ga(
     let mut population: Vec<Vec<usize>> = {
         let nn = nearest_neighbour_tour(nodes);
         let mut pop = vec![nn];
-        while pop.len() < config.population_size {
+        while pop.len() < population_size {
             let mut tour: Vec<usize> = (0..n).collect();
             shuffle(&mut tour, &mut rng);
             pop.push(tour);
@@ -592,19 +664,19 @@ pub fn run_ga(
     let mut best_tour = population[best_idx].clone();
     let mut best_dist = distances[best_idx];
 
-    let elite_count = (config.population_size / 10).max(1);
+    let elite_count = (population_size / 10).max(1);
 
-    for _ in 0..config.generations {
+    for _ in 0..generations {
         // Sort by distance (ascending)
-        let mut indexed: Vec<usize> = (0..config.population_size).collect();
+        let mut indexed: Vec<usize> = (0..population_size).collect();
         indexed.sort_by(|&a, &b| {
             distances[a]
                 .partial_cmp(&distances[b])
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        let mut next_pop: Vec<Vec<usize>> = Vec::with_capacity(config.population_size);
-        let mut next_dist: Vec<f64> = Vec::with_capacity(config.population_size);
+        let mut next_pop: Vec<Vec<usize>> = Vec::with_capacity(population_size);
+        let mut next_dist: Vec<f64> = Vec::with_capacity(population_size);
 
         // Elitism: keep best individuals unchanged
         for &idx in indexed.iter().take(elite_count) {
@@ -613,7 +685,7 @@ pub fn run_ga(
         }
 
         // Fill rest with tournament selection + OX crossover + swap mutation
-        while next_pop.len() < config.population_size {
+        while next_pop.len() < population_size {
             // Tournament selection (size 3) for two parents
             let p1 = tournament_select(&distances, 3, &mut rng);
             let p2 = tournament_select(&distances, 3, &mut rng);
@@ -640,7 +712,7 @@ pub fn run_ga(
     let result = GaResult {
         best_distance: best_dist,
         best_tour,
-        generations_run: config.generations,
+        generations_run: generations,
     };
 
     to_js(&result)
@@ -673,9 +745,10 @@ struct SaConfig {
     #[serde(default = "default_cooling")]
     #[tsify(optional)]
     cooling_rate: f64,
-    #[serde(default = "default_iterations")]
-    #[tsify(optional)]
-    iterations: usize,
+    /// At least 1 (`run_sa` checks it; see [`Whole`] for why it is signed).
+    #[serde(default = "default_iterations", deserialize_with = "whole")]
+    #[tsify(optional, type = "number")]
+    iterations: i128,
 }
 
 fn default_temp() -> f64 {
@@ -684,7 +757,7 @@ fn default_temp() -> f64 {
 fn default_cooling() -> f64 {
     0.995
 }
-fn default_iterations() -> usize {
+fn default_iterations() -> i128 {
     5000
 }
 
@@ -714,21 +787,21 @@ pub fn run_sa(
     #[wasm_bindgen(unchecked_param_type = "SaConfig")] config: JsValue,
 ) -> Result<JsValue, JsValue> {
     let config: SaConfig = from_js(config, "config")?;
-    check_sa(&config).map_err(js_err)?;
+    let iterations = check_sa(&config).map_err(js_err)?;
 
     let mut rng = WasmRng::new();
     let (best, best_dist) = anneal(
         &config.nodes,
         config.initial_temp,
         config.cooling_rate,
-        config.iterations,
+        iterations,
         &mut rng,
     );
 
     let result = SaResult {
         best_distance: best_dist,
         best_tour: best,
-        iterations_run: config.iterations,
+        iterations_run: iterations,
     };
 
     to_js(&result)
@@ -813,7 +886,7 @@ mod tests {
     /// behind it.
     #[test]
     fn refusals_carry_their_code_and_values() {
-        let ga = |nodes: usize, population_size: usize, generations: usize| GaConfig {
+        let ga = |nodes: usize, population_size: i128, generations: i128| GaConfig {
             nodes: vec![[0.0, 0.0]; nodes],
             population_size,
             generations,
@@ -1011,5 +1084,120 @@ mod path_tests {
         assert_eq!(err.fields["code"], "malformed_input");
         assert_eq!(err.fields["parameter"], "nodes[1]");
         assert_eq!(err.fields["index"], 1);
+    }
+}
+
+#[cfg(test)]
+mod whole_number_tests {
+    //! Counts are whole numbers read signed: a negative one is refused by the
+    //! same range check as a too-small one, a fractional one as malformed.
+    //!
+    //! `from_json` is the half of `from_js` after serde-wasm-bindgen has read
+    //! the JS value into JSON. That reader turns a JS number that is a safe
+    //! integer (`3`, `-1`, `3.0` -- the same number in JS) into a JSON integer
+    //! and any other number (`2.5`) into a JSON float, so these JSON values are
+    //! what a JS caller's arguments arrive as.
+
+    use super::*;
+
+    fn ga(settings: serde_json::Value) -> Result<GaCounts, WireError> {
+        let mut config = json!({ "nodes": [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]] });
+        config
+            .as_object_mut()
+            .expect("an object")
+            .extend(settings.as_object().expect("an object").clone());
+        check_ga(&from_json::<GaConfig>(config, "config")?)
+    }
+
+    fn sa(settings: serde_json::Value) -> Result<usize, WireError> {
+        let mut config = json!({ "nodes": [[0.0, 0.0], [1.0, 0.0]] });
+        config
+            .as_object_mut()
+            .expect("an object")
+            .extend(settings.as_object().expect("an object").clone());
+        check_sa(&from_json::<SaConfig>(config, "config")?)
+    }
+
+    #[test]
+    fn a_negative_count_is_refused_like_a_too_small_one() {
+        for got in [-1.0, 1.0] {
+            let err = ga(json!({ "population_size": got as i64 })).expect_err("below 2");
+            assert_eq!(
+                err.fields,
+                json!({ "code": "parameter_out_of_range", "parameter": "population_size",
+                        "min": 2.0, "max": null, "got": got })
+            );
+        }
+        for got in [-1.0, 0.0] {
+            let err = ga(json!({ "generations": got as i64 })).expect_err("below 1");
+            assert_eq!(
+                err.fields,
+                json!({ "code": "parameter_out_of_range", "parameter": "generations",
+                        "min": 1.0, "max": null, "got": got })
+            );
+            let err = sa(json!({ "iterations": got as i64 })).expect_err("below 1");
+            assert_eq!(
+                err.fields,
+                json!({ "code": "parameter_out_of_range", "parameter": "iterations",
+                        "min": 1.0, "max": null, "got": got })
+            );
+        }
+        let err = ga(json!({ "population_size": -1 })).expect_err("negative");
+        assert_eq!(err.message, "population_size must be at least 2, got -1");
+    }
+
+    #[test]
+    fn a_fractional_count_is_malformed_at_its_field() {
+        let err = ga(json!({ "population_size": 2.5 })).expect_err("not whole");
+        assert_eq!(
+            err.fields,
+            json!({ "code": "malformed_input", "parameter": "population_size" })
+        );
+        assert!(
+            err.message.contains("must be a whole number, got 2.5"),
+            "{}",
+            err.message
+        );
+        let err = sa(json!({ "iterations": 0.5 })).expect_err("not whole");
+        assert_eq!(err.fields["parameter"], "iterations");
+        assert_eq!(err.fields["code"], "malformed_input");
+    }
+
+    #[test]
+    fn a_whole_count_reads_as_itself() {
+        assert_eq!(
+            ga(json!({ "population_size": 3, "generations": 1 })).expect("accepted"),
+            GaCounts {
+                population_size: 3,
+                generations: 1
+            }
+        );
+        // A whole number written with a fractional part of zero is the same
+        // number -- in JS `3.0` is `3`.
+        assert_eq!(
+            ga(json!({ "population_size": 3.0 }))
+                .expect("accepted")
+                .population_size,
+            3
+        );
+        assert_eq!(sa(json!({ "iterations": 7 })).expect("accepted"), 7);
+        // Omitted: the defaults.
+        assert_eq!(
+            ga(json!({})).expect("defaults"),
+            GaCounts {
+                population_size: 100,
+                generations: 200
+            }
+        );
+        assert_eq!(sa(json!({})).expect("defaults"), 5000);
+    }
+
+    #[test]
+    fn a_count_that_is_not_a_number_stays_malformed() {
+        for bad in [json!(null), json!("10"), json!(true)] {
+            let err = ga(json!({ "population_size": bad })).expect_err("not a number");
+            assert_eq!(err.fields["code"], "malformed_input", "{bad}");
+            assert_eq!(err.fields["parameter"], "population_size", "{bad}");
+        }
     }
 }

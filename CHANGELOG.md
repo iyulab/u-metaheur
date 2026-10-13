@@ -25,6 +25,13 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   exclusive_max: 1 }`. `min` and `max` are still always present; the
   `exclusive_*` fields appear only on an open end, so a refusal with closed
   bounds only (`mutation_rate` in [0, 1]) keeps its shape.
+- **Breaking:** WebAssembly: `population_size`, `generations` and `iterations`
+  are read as whole numbers rather than unsigned integers, so a negative count is
+  refused by the range check like a too-small one — `population_size: -1` is
+  `parameter_out_of_range` `{ parameter: "population_size", min: 2, max: null,
+  got: -1 }`, as `1` is — instead of `malformed_input` ("invalid value: integer
+  `-1`, expected usize"). A count with a fractional part (`2.5`) stays
+  `malformed_input`, naming the field and saying it must be a whole number.
 
 ## [0.7.0] - 2026-10-07
 
