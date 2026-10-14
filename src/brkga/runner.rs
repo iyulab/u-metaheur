@@ -2,7 +2,7 @@
 
 use super::config::BrkgaConfig;
 use super::types::BrkgaDecoder;
-use crate::ConfigError;
+use crate::{ConfigError, StopReason};
 use rand::RngExt;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -29,11 +29,9 @@ pub struct BrkgaResult {
     /// Number of generations executed.
     pub generations: usize,
 
-    /// Whether terminated due to stagnation.
-    pub stagnated: bool,
-
-    /// Whether cancelled externally.
-    pub cancelled: bool,
+    /// Why the run stopped: its generation budget, a stall
+    /// (`stagnation_limit`) or a cancel.
+    pub stop_reason: StopReason,
 
     /// Best cost at the end of each generation.
     pub cost_history: Vec<f64>,
@@ -105,13 +103,13 @@ impl BrkgaRunner {
         cost_history.push(best.cost);
 
         let mut stagnation_counter = 0usize;
-        let mut cancelled = false;
+        let mut stop_reason = StopReason::IterationLimit;
 
         // Evolutionary loop
         for _gen in 0..config.max_generations {
             if let Some(ref flag) = cancel {
                 if flag.load(Ordering::Relaxed) {
-                    cancelled = true;
+                    stop_reason = StopReason::Cancelled;
                     break;
                 }
             }
@@ -182,8 +180,7 @@ impl BrkgaRunner {
                     best_keys: best.keys,
                     best_cost: best.cost,
                     generations: cost_history.len() - 1,
-                    stagnated: true,
-                    cancelled: false,
+                    stop_reason: StopReason::NoImprovement,
                     cost_history,
                 });
             }
@@ -192,13 +189,12 @@ impl BrkgaRunner {
         Ok(BrkgaResult {
             best_keys: best.keys,
             best_cost: best.cost,
-            generations: if cancelled {
+            generations: if stop_reason.cut_short() {
                 cost_history.len().saturating_sub(1)
             } else {
                 config.max_generations
             },
-            stagnated: false,
-            cancelled,
+            stop_reason,
             cost_history,
         })
     }
@@ -310,7 +306,7 @@ mod tests {
         let result = BrkgaRunner::run(&decoder, &config).unwrap();
 
         assert!(
-            result.stagnated || result.generations < 1000,
+            result.stop_reason == StopReason::NoImprovement || result.generations < 1000,
             "expected early termination"
         );
     }
@@ -333,7 +329,7 @@ mod tests {
         });
 
         let result = BrkgaRunner::run_with_cancel(&decoder, &config, Some(cancel)).unwrap();
-        assert!(result.cancelled);
+        assert_eq!(result.stop_reason, StopReason::Cancelled);
     }
 
     #[test]

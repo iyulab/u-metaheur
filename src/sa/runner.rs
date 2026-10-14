@@ -2,7 +2,7 @@
 
 use super::config::{CoolingSchedule, SaConfig};
 use super::types::SaProblem;
-use crate::ConfigError;
+use crate::{ConfigError, StopReason};
 use rand::RngExt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -29,8 +29,9 @@ pub struct SaResult<S: Clone> {
     /// Number of improving moves.
     pub improving_moves: usize,
 
-    /// Whether cancelled externally.
-    pub cancelled: bool,
+    /// Why the run stopped: `Completed` when it cooled to its minimum
+    /// temperature, otherwise its iteration cap or a cancel.
+    pub stop_reason: StopReason,
 
     /// Best cost sampled at regular intervals for history tracking.
     pub cost_history: Vec<f64>,
@@ -75,7 +76,7 @@ impl SaRunner {
         let mut total_iterations = 0usize;
         let mut accepted_moves = 0usize;
         let mut improving_moves = 0usize;
-        let mut cancelled = false;
+        let mut stop_reason = StopReason::Completed;
 
         // For linear cooling: compute step count
         let linear_max_steps = compute_linear_steps(config);
@@ -90,7 +91,7 @@ impl SaRunner {
         while temperature > config.min_temperature {
             if let Some(ref flag) = cancel {
                 if flag.load(Ordering::Relaxed) {
-                    cancelled = true;
+                    stop_reason = StopReason::Cancelled;
                     break;
                 }
             }
@@ -141,6 +142,7 @@ impl SaRunner {
 
             // Check hard iteration limit
             if config.max_iterations > 0 && total_iterations >= config.max_iterations {
+                stop_reason = StopReason::IterationLimit;
                 break;
             }
 
@@ -164,7 +166,7 @@ impl SaRunner {
             final_temperature: temperature,
             accepted_moves,
             improving_moves,
-            cancelled,
+            stop_reason,
             cost_history,
         })
     }
@@ -329,7 +331,7 @@ mod tests {
 
         let result =
             SaRunner::run_with_cancel(&problem, &config, Some(cancel)).expect("valid SaConfig");
-        assert!(result.cancelled);
+        assert_eq!(result.stop_reason, StopReason::Cancelled);
     }
 
     #[test]

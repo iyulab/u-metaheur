@@ -2,7 +2,7 @@
 
 use super::config::AlnsConfig;
 use super::types::{AlnsProblem, DestroyOperator, RepairOperator};
-use crate::ConfigError;
+use crate::{ConfigError, StopReason};
 use rand::{Rng, RngExt};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -26,8 +26,8 @@ pub struct AlnsResult<S: Clone> {
     /// Final temperature.
     pub final_temperature: f64,
 
-    /// Whether cancelled externally.
-    pub cancelled: bool,
+    /// Why the run stopped: its iteration budget or a cancel.
+    pub stop_reason: StopReason,
 
     /// Final destroy operator weights.
     pub destroy_weights: Vec<f64>,
@@ -172,7 +172,8 @@ impl AlnsRunner {
 
         let mut temperature = config.initial_temperature;
         let mut improvements = 0usize;
-        let mut cancelled = false;
+        let mut stop_reason = StopReason::IterationLimit;
+        let mut iterations = config.max_iterations;
 
         // Cost history
         let history_interval = config.segment_length.max(1);
@@ -182,7 +183,8 @@ impl AlnsRunner {
         for iteration in 0..config.max_iterations {
             if let Some(ref flag) = cancel {
                 if flag.load(Ordering::Relaxed) {
-                    cancelled = true;
+                    stop_reason = StopReason::Cancelled;
+                    iterations = iteration;
                     break;
                 }
             }
@@ -264,14 +266,10 @@ impl AlnsRunner {
         Ok(AlnsResult {
             best,
             best_cost,
-            iterations: if cancelled {
-                cost_history.len().saturating_sub(1) * history_interval
-            } else {
-                config.max_iterations
-            },
+            iterations,
             improvements,
             final_temperature: temperature,
-            cancelled,
+            stop_reason,
             destroy_weights: destroy_stats.iter().map(|s| s.weight).collect(),
             repair_weights: repair_stats.iter().map(|s| s.weight).collect(),
             cost_history,
@@ -517,7 +515,7 @@ mod tests {
         let result =
             AlnsRunner::run_with_cancel(&problem, &destroy_ops, &repair_ops, &config, Some(cancel))
                 .unwrap();
-        assert!(result.cancelled);
+        assert_eq!(result.stop_reason, StopReason::Cancelled);
     }
 
     #[test]

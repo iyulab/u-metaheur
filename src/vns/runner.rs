@@ -31,6 +31,9 @@ pub struct VnsResult<S: Clone> {
     pub iterations: usize,
     /// Iteration at which the best solution was found.
     pub best_iteration: usize,
+    /// Why the run stopped: its iteration budget or `max_no_improve`
+    /// neighborhoods without a better solution.
+    pub stop_reason: crate::StopReason,
     /// Cost history (best cost at each outer iteration).
     pub cost_history: Vec<f64>,
 }
@@ -76,6 +79,7 @@ impl VnsRunner {
         let mut cost_history = Vec::with_capacity(config.max_iterations);
         let mut no_improve_count = 0;
         let mut iteration = 0;
+        let mut stop_reason = crate::StopReason::IterationLimit;
 
         for outer in 0..config.max_iterations {
             let mut k = 0;
@@ -109,6 +113,7 @@ impl VnsRunner {
 
             // Stagnation check
             if no_improve_count >= config.max_no_improve {
+                stop_reason = crate::StopReason::NoImprovement;
                 break;
             }
         }
@@ -118,6 +123,7 @@ impl VnsRunner {
             best_cost,
             iterations: iteration,
             best_iteration,
+            stop_reason,
             cost_history,
         }
     }

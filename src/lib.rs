@@ -34,6 +34,8 @@ pub mod cp;
 pub mod dispatching;
 pub mod ga;
 pub mod sa;
+pub mod stop;
+pub use stop::StopReason;
 pub mod tabu;
 pub mod vns;
 #[cfg(feature = "wasm")]

@@ -8,6 +8,27 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Added
+
+- `StopReason` — why a run stopped, one closed vocabulary: `Completed`,
+  `Optimal`, `TargetReached`, `IterationLimit`, `NoImprovement`, `TimeLimit`,
+  `Cancelled` (`name()` gives the snake_case wire name; serde with the `serde`
+  feature). Every runner reports it as `stop_reason`, set where it stops.
+
+### Changed
+
+- **Breaking:** the termination flags are replaced by `stop_reason` —
+  `GaResult::{stagnated, cancelled, timed_out}`, `BrkgaResult::{stagnated,
+  cancelled}`, `SaResult::cancelled` and `AlnsResult::cancelled`;
+  `TabuResult` and `VnsResult` gain it. The flags could not say why a run with
+  none of them set had stopped (its budget, or SA cooling to its minimum), and
+  Tabu and VNS said nothing at all.
+
+### Fixed
+
+- `AlnsResult::iterations` of a cancelled run was estimated from the cost
+  history's sampling interval; it is now the iterations that ran.
+
 ## [0.9.0] - 2026-10-14
 
 ### Added

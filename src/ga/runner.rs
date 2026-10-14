@@ -5,7 +5,7 @@
 
 use super::config::GaConfig;
 use super::types::{Fitness, GaProblem, Individual};
-use crate::ConfigError;
+use crate::{ConfigError, StopReason};
 use rand::RngExt;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -47,14 +47,9 @@ pub struct GaResult<I: Individual> {
     /// Total number of generations executed.
     pub generations: usize,
 
-    /// Whether the run was terminated due to stagnation.
-    pub stagnated: bool,
-
-    /// Whether the run was cancelled externally.
-    pub cancelled: bool,
-
-    /// Whether the run was stopped due to the wall-clock time limit.
-    pub timed_out: bool,
+    /// Why the run stopped: its generation budget, a stall
+    /// (`stagnation_limit`), its time limit or a cancel.
+    pub stop_reason: StopReason,
 
     /// Best fitness at the end of each generation.
     pub fitness_history: Vec<f64>,
@@ -123,9 +118,7 @@ impl GaRunner {
         fitness_history.push(best.fitness().to_f64());
 
         let mut stagnation_counter = 0usize;
-        let mut cancelled = false;
-        #[allow(unused_mut)]
-        let mut timed_out = false;
+        let mut stop_reason = StopReason::IterationLimit;
         let mut generation_stats = Vec::with_capacity(config.max_generations);
         #[cfg(not(target_arch = "wasm32"))]
         let start_time = Instant::now();
@@ -138,7 +131,7 @@ impl GaRunner {
             // Check cancellation
             if let Some(ref flag) = cancel {
                 if flag.load(Ordering::Relaxed) {
-                    cancelled = true;
+                    stop_reason = StopReason::Cancelled;
                     break;
                 }
             }
@@ -147,7 +140,7 @@ impl GaRunner {
             #[cfg(not(target_arch = "wasm32"))]
             if let Some(limit_ms) = config.time_limit_ms {
                 if start_time.elapsed().as_millis() as u64 >= limit_ms {
-                    timed_out = true;
+                    stop_reason = StopReason::TimeLimit;
                     break;
                 }
             }
@@ -231,9 +224,7 @@ impl GaRunner {
                     best_fitness: best.fitness(),
                     best,
                     generations: gen + 1,
-                    stagnated: true,
-                    cancelled: false,
-                    timed_out: false,
+                    stop_reason: StopReason::NoImprovement,
                     fitness_history,
                     generation_stats,
                 });
@@ -243,14 +234,12 @@ impl GaRunner {
         Ok(GaResult {
             best_fitness: best.fitness(),
             best,
-            generations: if cancelled || timed_out {
+            generations: if stop_reason.cut_short() {
                 fitness_history.len().saturating_sub(1)
             } else {
                 config.max_generations
             },
-            stagnated: false,
-            cancelled,
-            timed_out,
+            stop_reason,
             fitness_history,
             generation_stats,
         })
@@ -428,7 +417,7 @@ mod tests {
 
         // Should stop early due to convergence
         assert!(
-            result.stagnated || result.generations < 1000,
+            result.stop_reason == StopReason::NoImprovement || result.generations < 1000,
             "expected stagnation or early stop"
         );
     }
@@ -454,7 +443,7 @@ mod tests {
 
         let result = GaRunner::run_with_cancel(&problem, &config, Some(cancel)).unwrap();
 
-        assert!(result.cancelled, "expected cancelled result");
+        assert_eq!(result.stop_reason, StopReason::Cancelled);
         assert!(result.generations < 10000, "should have stopped early");
     }
 
@@ -690,9 +679,7 @@ mod tests {
 
         let result = GaRunner::run(&problem, &config).unwrap();
 
-        assert!(result.timed_out, "expected timed_out = true");
-        assert!(!result.cancelled);
-        assert!(!result.stagnated);
+        assert_eq!(result.stop_reason, StopReason::TimeLimit);
         assert!(
             result.generations < 100_000,
             "should have stopped well before max_generations, got {}",
@@ -713,7 +700,7 @@ mod tests {
 
         let result = GaRunner::run(&problem, &config).unwrap();
 
-        assert!(!result.timed_out);
+        assert_ne!(result.stop_reason, StopReason::TimeLimit);
         assert_eq!(result.generations, 10);
     }
 
@@ -734,7 +721,7 @@ mod tests {
 
         // Should stagnate quickly because 50% improvement per generation is unlikely
         assert!(
-            result.stagnated || result.generations < 1000,
+            result.stop_reason == StopReason::NoImprovement || result.generations < 1000,
             "expected early stagnation with high threshold, got {} generations",
             result.generations
         );
@@ -771,7 +758,7 @@ mod tests {
 
         let result = GaRunner::run(&problem, &config).unwrap();
 
-        assert!(result.timed_out);
+        assert_eq!(result.stop_reason, StopReason::TimeLimit);
         // Best fitness should be valid (not infinity)
         assert!(
             result.best_fitness < 0.0,

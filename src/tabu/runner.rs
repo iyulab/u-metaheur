@@ -32,6 +32,10 @@ pub struct TabuResult<S: Clone> {
     pub iterations: usize,
     /// Iteration at which the best solution was found.
     pub best_iteration: usize,
+    /// Why the run stopped: its iteration budget, `max_no_improve`
+    /// iterations without a better solution, or `Completed` when a solution
+    /// had no neighbors left to move to.
+    pub stop_reason: crate::StopReason,
     /// Cost history (best cost at each iteration).
     pub cost_history: Vec<f64>,
 }
@@ -74,6 +78,7 @@ impl TabuRunner {
 
         let mut cost_history = Vec::with_capacity(config.max_iterations);
         let mut no_improve_count = 0;
+        let mut stop_reason = crate::StopReason::IterationLimit;
 
         for iteration in 0..config.max_iterations {
             // Generate neighborhood
@@ -81,6 +86,7 @@ impl TabuRunner {
 
             if neighbors.is_empty() {
                 cost_history.push(best_cost);
+                stop_reason = crate::StopReason::Completed;
                 break;
             }
 
@@ -149,6 +155,7 @@ impl TabuRunner {
 
             // Stagnation check
             if no_improve_count >= config.max_no_improve {
+                stop_reason = crate::StopReason::NoImprovement;
                 break;
             }
         }
@@ -158,6 +165,7 @@ impl TabuRunner {
             best_cost,
             iterations: cost_history.len(),
             best_iteration,
+            stop_reason,
             cost_history,
         }
     }
