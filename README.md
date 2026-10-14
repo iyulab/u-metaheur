@@ -81,7 +81,7 @@ assert!((result.best - 3.0).abs() < 0.1);
 u-metaheur = "0.9"
 
 # with serde support
-u-metaheur = { version = "0.8", features = ["serde"] }
+u-metaheur = { version = "0.9", features = ["serde"] }
 ```
 
 ## Build & Test
