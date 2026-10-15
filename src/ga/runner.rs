@@ -104,10 +104,13 @@ impl GaRunner {
             None => create_rng(rand::random()),
         };
 
-        // 1. Initialize population
-        let mut population: Vec<P::Individual> = (0..config.population_size)
-            .map(|_| problem.create_individual(&mut rng))
-            .collect();
+        // 1. Initialize population: the problem's seeds first, random
+        // individuals for the rest.
+        let mut population: Vec<P::Individual> = problem.initial_individuals();
+        population.truncate(config.population_size);
+        while population.len() < config.population_size {
+            population.push(problem.create_individual(&mut rng));
+        }
 
         // 2. Evaluate initial population
         evaluate_population(problem, &mut population, config.parallel);
@@ -381,6 +384,44 @@ mod tests {
             let idx = rng.random_range(0..self.n);
             ind.bits[idx] = !ind.bits[idx];
         }
+    }
+
+    /// OneMax that seeds its population with the all-true optimum.
+    struct SeededOneMax(OneMaxProblem, usize);
+
+    impl GaProblem for SeededOneMax {
+        type Individual = BitString;
+        fn create_individual<R: Rng>(&self, rng: &mut R) -> BitString {
+            self.0.create_individual(rng)
+        }
+        fn initial_individuals(&self) -> Vec<BitString> {
+            (0..self.1)
+                .map(|_| BitString {
+                    bits: vec![true; self.0.n],
+                    fitness: f64::INFINITY,
+                })
+                .collect()
+        }
+        fn evaluate(&self, ind: &BitString) -> f64 {
+            self.0.evaluate(ind)
+        }
+    }
+
+    #[test]
+    fn test_initial_individuals_seed_the_population() {
+        let config = GaConfig::default()
+            .with_population_size(10)
+            .with_max_generations(1)
+            .with_seed(7)
+            .with_parallel(false);
+        // The seed is the optimum, so the initial population already holds it.
+        let result = GaRunner::run(&SeededOneMax(OneMaxProblem { n: 64 }, 1), &config)
+            .expect("valid config");
+        assert_eq!(result.fitness_history[0], -64.0);
+        // More seeds than the population: the runner keeps population_size.
+        let result = GaRunner::run(&SeededOneMax(OneMaxProblem { n: 64 }, 25), &config)
+            .expect("valid config");
+        assert_eq!(result.fitness_history[0], -64.0);
     }
 
     #[test]

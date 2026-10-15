@@ -106,6 +106,18 @@ pub trait GaProblem: Send + Sync {
     /// produce a valid (but not necessarily good) solution.
     fn create_individual<R: Rng>(&self, rng: &mut R) -> Self::Individual;
 
+    /// Individuals the initial population starts from, before any random one.
+    ///
+    /// Seeding a population with a few solutions from constructive heuristics
+    /// is how a hybrid GA starts from good genetic material rather than from
+    /// noise (Prins 2004 seeds with Clarke-Wright, Mole-Jameson and
+    /// Gillett-Miller tours). The runner takes at most `population_size` of
+    /// these, in order, and fills the rest with
+    /// [`create_individual`](Self::create_individual). The default is none.
+    fn initial_individuals(&self) -> Vec<Self::Individual> {
+        Vec::new()
+    }
+
     /// Evaluates an individual and returns its fitness.
     ///
     /// This is typically the most expensive operation. The GA framework

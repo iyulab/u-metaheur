@@ -8,6 +8,13 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Added
+
+- `GaProblem::initial_individuals` — individuals the initial population
+  starts from (seeds from constructive heuristics), before the random ones.
+  The runner takes at most `population_size` of them; the default is none, so
+  existing problems are unchanged.
+
 ### Fixed
 
 - A result the package fails to hand back to JavaScript is refused as
