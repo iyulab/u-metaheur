@@ -47,6 +47,105 @@ use crate::config_error::Bounds;
 // Shared utilities
 // ============================================================================
 
+/// Every reason a function of this binding refuses with: the `code` an
+/// `Error` carries, and the fields that can stand beside it. A refusal is
+/// built from one of these ([`WireError::new`]), so [`codes`] -- the list a caller
+/// reads -- is the list the binding refuses from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Code {
+    MalformedInput,
+    ValueNotFinite,
+    ParameterOutOfRange,
+    InsufficientData,
+}
+
+impl Code {
+    const ALL: [Code; 4] = [
+        Code::MalformedInput,
+        Code::ValueNotFinite,
+        Code::ParameterOutOfRange,
+        Code::InsufficientData,
+    ];
+
+    fn name(self) -> &'static str {
+        match self {
+            Code::MalformedInput => "malformed_input",
+            Code::ValueNotFinite => "value_not_finite",
+            Code::ParameterOutOfRange => "parameter_out_of_range",
+            Code::InsufficientData => "insufficient_data",
+        }
+    }
+
+    /// The fields a refusal with this code can carry besides `code`.
+    fn fields(self) -> &'static [&'static str] {
+        match self {
+            Code::MalformedInput => &["parameter", "index"],
+            Code::ValueNotFinite => &["parameter", "index"],
+            Code::ParameterOutOfRange => &[
+                "parameter",
+                "min",
+                "max",
+                "exclusive_min",
+                "exclusive_max",
+                "got",
+            ],
+            Code::InsufficientData => &["parameter", "min", "got"],
+        }
+    }
+}
+
+/// A refusal reason: the `code` an `Error` carries and the fields that can
+/// stand beside it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, tsify::Tsify)]
+#[serde(deny_unknown_fields)]
+struct RefusalCode {
+    code: String,
+    fields: Vec<String>,
+}
+
+/// A violation a checker reports. This package has no checker; the type is
+/// here so every engine's [`Codes`] has one shape.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, tsify::Tsify)]
+#[serde(deny_unknown_fields)]
+struct ViolationCode {
+    code: String,
+    fields: Vec<String>,
+    checkers: Vec<String>,
+}
+
+/// What this package can answer with besides a result: every refusal
+/// `code`, and no violations -- it has no checker.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, tsify::Tsify)]
+#[serde(deny_unknown_fields)]
+struct Codes {
+    refusals: Vec<RefusalCode>,
+    violations: Vec<ViolationCode>,
+}
+
+fn code_catalog() -> Codes {
+    Codes {
+        refusals: Code::ALL
+            .into_iter()
+            .map(|c| RefusalCode {
+                code: c.name().to_string(),
+                fields: c.fields().iter().map(|f| f.to_string()).collect(),
+            })
+            .collect(),
+        violations: vec![],
+    }
+}
+
+/// Every refusal `code` the functions of this package throw, with the fields
+/// that can come with it: `{ refusals: [{ code, fields }], violations: [] }`.
+///
+/// It is built from the table the refusals come from, so a caller that
+/// translates codes can check its list against the package's.
+#[wasm_bindgen(unchecked_return_type = "Codes")]
+pub fn codes() -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen::to_value(&code_catalog())
+        .map_err(|e| js_err(WireError::malformed_input("result", e.to_string())))
+}
+
 /// A refusal on its way to JavaScript: the text for `Error.message`, and the
 /// fields -- `code` first among them -- copied onto the `Error`.
 #[derive(Debug)]
@@ -56,9 +155,17 @@ struct WireError {
 }
 
 impl WireError {
-    fn new(code: &str, message: String, mut extra: serde_json::Value) -> Self {
+    fn new(code: Code, message: String, mut extra: serde_json::Value) -> Self {
+        if let Some(given) = extra.as_object() {
+            debug_assert!(
+                given.keys().all(|k| code.fields().contains(&k.as_str())),
+                "{} refusal with undeclared fields: {:?}",
+                code.name(),
+                given.keys().collect::<Vec<_>>()
+            );
+        }
         let mut fields = serde_json::Map::new();
-        fields.insert("code".into(), json!(code));
+        fields.insert("code".into(), json!(code.name()));
         if let Some(extra) = extra.as_object_mut() {
             fields.append(extra);
         }
@@ -72,7 +179,7 @@ impl WireError {
     /// instead of a value, a wrong type, a missing or unknown key.
     fn malformed_input(parameter: &str, message: String) -> Self {
         Self::new(
-            "malformed_input",
+            Code::MalformedInput,
             message,
             json!({ "parameter": parameter }),
         )
@@ -104,13 +211,13 @@ impl WireError {
                 fields[key] = json!(value);
             }
         }
-        Self::new("parameter_out_of_range", message, fields)
+        Self::new(Code::ParameterOutOfRange, message, fields)
     }
 
     /// Fewer nodes than a tour needs.
     fn too_few_nodes(got: usize) -> Self {
         Self::new(
-            "insufficient_data",
+            Code::InsufficientData,
             format!("need at least 2 nodes, got {got}"),
             json!({ "parameter": "nodes", "min": 2, "got": got }),
         )
@@ -233,7 +340,7 @@ fn from_js<T: serde::de::DeserializeOwned>(value: JsValue, param: &str) -> Resul
     }
     if let Some(found) = find_non_finite(&value, param, false) {
         return Err(js_err(WireError::new(
-            "value_not_finite",
+            Code::ValueNotFinite,
             found.message(),
             found.fields(),
         )));
@@ -1199,5 +1306,43 @@ mod whole_number_tests {
             assert_eq!(err.fields["code"], "malformed_input", "{bad}");
             assert_eq!(err.fields["parameter"], "population_size", "{bad}");
         }
+    }
+}
+
+#[cfg(test)]
+mod code_catalog_tests {
+    use super::*;
+
+    /// The README's code tables list exactly the published vocabulary, so the
+    /// tables and `codes()` cannot drift apart.
+    #[test]
+    fn the_readme_documents_every_code_and_no_other() {
+        let readme = include_str!("../README.md");
+        let mut documented = std::collections::BTreeSet::new();
+        let mut in_table = false;
+        for line in readme.lines() {
+            if line.starts_with("| `code` |") {
+                in_table = true;
+                continue;
+            }
+            if !line.starts_with('|') {
+                in_table = false;
+                continue;
+            }
+            if in_table && !line.starts_with("|---") {
+                let first = line.split('|').nth(1).expect("a cell");
+                for code in first.split('·') {
+                    documented.insert(code.trim().trim_matches('`').to_string());
+                }
+            }
+        }
+        let catalog = code_catalog();
+        let published: std::collections::BTreeSet<String> = catalog
+            .refusals
+            .iter()
+            .map(|r| r.code.clone())
+            .chain(catalog.violations.iter().map(|v| v.code.clone()))
+            .collect();
+        assert_eq!(documented, published);
     }
 }
