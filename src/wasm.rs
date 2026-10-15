@@ -57,14 +57,17 @@ enum Code {
     ValueNotFinite,
     ParameterOutOfRange,
     InsufficientData,
+    /// The package failed, not the input.
+    Internal,
 }
 
 impl Code {
-    const ALL: [Code; 4] = [
+    const ALL: [Code; 5] = [
         Code::MalformedInput,
         Code::ValueNotFinite,
         Code::ParameterOutOfRange,
         Code::InsufficientData,
+        Code::Internal,
     ];
 
     fn name(self) -> &'static str {
@@ -73,6 +76,7 @@ impl Code {
             Code::ValueNotFinite => "value_not_finite",
             Code::ParameterOutOfRange => "parameter_out_of_range",
             Code::InsufficientData => "insufficient_data",
+            Code::Internal => "internal",
         }
     }
 
@@ -90,6 +94,7 @@ impl Code {
                 "got",
             ],
             Code::InsufficientData => &["parameter", "min", "got"],
+            Code::Internal => &[],
         }
     }
 }
@@ -143,7 +148,7 @@ fn code_catalog() -> Codes {
 #[wasm_bindgen(unchecked_return_type = "Codes")]
 pub fn codes() -> Result<JsValue, JsValue> {
     serde_wasm_bindgen::to_value(&code_catalog())
-        .map_err(|e| js_err(WireError::malformed_input("result", e.to_string())))
+        .map_err(|e| js_err(WireError::new(Code::Internal, e.to_string(), json!({}))))
 }
 
 /// A refusal on its way to JavaScript: the text for `Error.message`, and the
@@ -243,7 +248,7 @@ fn js_err(error: WireError) -> JsValue {
 /// Serializes a response; a failure is reported rather than unwrapped.
 fn to_js<T: Serialize>(value: &T) -> Result<JsValue, JsValue> {
     serde_wasm_bindgen::to_value(value)
-        .map_err(|e| js_err(WireError::malformed_input("result", e.to_string())))
+        .map_err(|e| js_err(WireError::new(Code::Internal, e.to_string(), json!({}))))
 }
 
 /// A NaN or ±Infinity found in a JS argument, and where it sits.
