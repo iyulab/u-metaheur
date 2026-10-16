@@ -8,6 +8,12 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-10-16
+
+### Changed
+
+- Depends on u-numflow 0.14 (no change to this crate's API).
+
 ## [0.12.0] - 2026-10-16
 
 Depends on u-numflow 0.13.
