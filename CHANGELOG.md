@@ -8,6 +8,16 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Changed
+
+- The WebAssembly `run_ga` and `run_sa` run this crate's `GaRunner` and
+  `SaRunner` on the travelling-salesman tour; they ran loops of their own,
+  seeded from the clock, so no run could be reproduced and the runners'
+  settings did not reach JavaScript. Both take `seed` and `time_limit_ms` and
+  report `stop_reason`. `run_ga` keeps its operators (order crossover, swap
+  mutation, tournament of three, a tenth of elites, a nearest-neighbour tour in
+  the first population) and runs the `generations` it is given.
+
 ## [0.12.1] - 2026-10-16
 
 ### Changed

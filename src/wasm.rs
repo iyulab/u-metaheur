@@ -601,55 +601,146 @@ fn nearest_neighbour_tour(nodes: &[[f64; 2]]) -> Vec<usize> {
     tour
 }
 
-/// Simple linear congruential generator for WASM-safe randomness.
-///
-/// Uses `getrandom` (already a wasm_js dependency) via `rand` to seed,
-/// then produces fast uniform `u64` values.
-struct WasmRng {
-    state: u64,
+/// A tour over the request's nodes, carrying its closed length as fitness
+/// (lower is better).
+#[derive(Clone)]
+struct Tour {
+    order: Vec<usize>,
+    length: f64,
 }
 
-impl WasmRng {
-    fn new() -> Self {
-        // Use rand's thread_rng for seeding — rand uses getrandom under the
-        // hood which is already configured for WASM via the wasm_js feature.
-        use rand::Rng;
-        let seed = rand::rng().next_u64();
-        Self { state: seed }
+impl crate::ga::Individual for Tour {
+    type Fitness = f64;
+
+    fn fitness(&self) -> f64 {
+        self.length
     }
 
-    #[cfg(test)]
-    fn with_seed(seed: u64) -> Self {
-        Self { state: seed }
-    }
-
-    fn next_u64(&mut self) -> u64 {
-        // Splitmix64
-        self.state = self.state.wrapping_add(0x9e37_79b9_7f4a_7c15);
-        let mut z = self.state;
-        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
-        z ^ (z >> 31)
-    }
-
-    /// Uniform `usize` in `[0, n)`.
-    fn next_usize(&mut self, n: usize) -> usize {
-        (self.next_u64() % n as u64) as usize
-    }
-
-    /// Uniform `f64` in `[0, 1)`.
-    fn next_f64(&mut self) -> f64 {
-        (self.next_u64() >> 11) as f64 / (1u64 << 53) as f64
+    fn set_fitness(&mut self, fitness: f64) {
+        self.length = fitness;
     }
 }
 
-/// Fisher-Yates shuffle using `WasmRng`.
-fn shuffle(slice: &mut [usize], rng: &mut WasmRng) {
-    let n = slice.len();
-    for i in (1..n).rev() {
-        let j = rng.next_usize(i + 1);
-        slice.swap(i, j);
+/// The travelling-salesman problem over `nodes`, stated for the crate's GA
+/// and SA runners: `run_ga` and `run_sa` are those runners, not loops of their
+/// own, so they take the runners' settings (`seed`, `time_limit_ms`) and report
+/// why they stopped.
+struct Tsp {
+    nodes: Vec<[f64; 2]>,
+}
+
+impl crate::ga::GaProblem for Tsp {
+    type Individual = Tour;
+
+    fn create_individual<R: rand::Rng>(&self, rng: &mut R) -> Tour {
+        use rand::seq::SliceRandom;
+        let mut order: Vec<usize> = (0..self.nodes.len()).collect();
+        order.shuffle(rng);
+        Tour {
+            order,
+            length: f64::INFINITY,
+        }
     }
+
+    /// The nearest-neighbour tour seeds the population.
+    fn initial_individuals(&self) -> Vec<Tour> {
+        vec![Tour {
+            order: nearest_neighbour_tour(&self.nodes),
+            length: f64::INFINITY,
+        }]
+    }
+
+    fn evaluate(&self, tour: &Tour) -> f64 {
+        tour_distance(&tour.order, &self.nodes)
+    }
+
+    fn crossover<R: rand::Rng>(&self, a: &Tour, b: &Tour, rng: &mut R) -> Vec<Tour> {
+        let (c, d) = crate::ga::operators::order_crossover(&a.order, &b.order, rng);
+        [c, d]
+            .into_iter()
+            .map(|order| Tour {
+                order,
+                length: f64::INFINITY,
+            })
+            .collect()
+    }
+
+    fn mutate<R: rand::Rng>(&self, tour: &mut Tour, rng: &mut R) {
+        crate::ga::operators::swap_mutation(&mut tour.order, rng);
+    }
+}
+
+impl crate::sa::SaProblem for Tsp {
+    type Solution = Vec<usize>;
+
+    /// Annealing starts from the nearest-neighbour tour.
+    fn initial_solution<R: rand::Rng>(&self, _rng: &mut R) -> Vec<usize> {
+        nearest_neighbour_tour(&self.nodes)
+    }
+
+    fn cost(&self, tour: &Vec<usize>) -> f64 {
+        tour_distance(tour, &self.nodes)
+    }
+
+    /// A 2-opt move: reverse a segment that is neither one node nor the whole
+    /// tour (both leave the cycle as it was).
+    fn neighbor<R: rand::Rng>(&self, tour: &Vec<usize>, rng: &mut R) -> Vec<usize> {
+        let n = tour.len();
+        let mut next = tour.clone();
+        if n < 4 {
+            // Every tour of three or fewer nodes is the same cycle.
+            return next;
+        }
+        loop {
+            use rand::RngExt;
+            let (i, j) = (rng.random_range(0..n), rng.random_range(0..n));
+            let (lo, hi) = (i.min(j), i.max(j));
+            if lo != hi && hi - lo != n - 1 {
+                next[lo..=hi].reverse();
+                return next;
+            }
+        }
+    }
+}
+
+/// An optional whole-number setting (`seed`, `time_limit_ms`); see [`Whole`].
+fn optional_whole<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<i128>, D::Error> {
+    Option::<Whole>::deserialize(deserializer).map(|w| w.map(|w| w.0))
+}
+
+/// A seed: a whole number from 0 to 2^64 - 1.
+fn seed(value: Option<i128>) -> Result<Option<u64>, WireError> {
+    value
+        .map(|v| {
+            u64::try_from(v).map_err(|_| {
+                WireError::out_of_range(
+                    "seed",
+                    0.0..=u64::MAX as f64,
+                    v as f64,
+                    format!("seed must be from 0 to {}, got {v}", u64::MAX),
+                )
+            })
+        })
+        .transpose()
+}
+
+/// A wall-clock budget in milliseconds, at least 1.
+fn time_limit(value: Option<i128>) -> Result<Option<u64>, WireError> {
+    value
+        .map(|v| count("time_limit_ms", v, 1).map(|ms| ms as u64))
+        .transpose()
+}
+
+/// The runner refusing settings this binding already checked is the
+/// package's fault, not the caller's.
+fn runner_refused(e: crate::ConfigError) -> JsValue {
+    js_err(WireError::new(
+        Code::Internal,
+        format!("internal: the runner refused checked settings: {e}"),
+        json!({}),
+    ))
 }
 
 // ============================================================================
@@ -671,6 +762,16 @@ struct GaConfig {
     #[serde(default = "default_mutation_rate")]
     #[tsify(optional)]
     mutation_rate: f64,
+    /// RNG seed, a whole number from 0 to 2^64 - 1: the same request and seed
+    /// give the same tour when the run ends on its own budget.
+    #[serde(default, deserialize_with = "optional_whole")]
+    #[tsify(optional, type = "number | null")]
+    seed: Option<i128>,
+    /// Wall-clock budget in milliseconds, at least 1: the run returns the best
+    /// tour found by then (`stop_reason: "time_limit"`).
+    #[serde(default, deserialize_with = "optional_whole")]
+    #[tsify(optional, type = "number | null")]
+    time_limit_ms: Option<i128>,
 }
 
 fn default_pop_size() -> i128 {
@@ -688,56 +789,28 @@ struct GaResult {
     best_distance: f64,
     best_tour: Vec<usize>,
     generations_run: usize,
+    /// Why the run stopped: `"iteration_limit"` (it ran its `generations`) or
+    /// `"time_limit"`.
+    #[tsify(type = "\"iteration_limit\" | \"time_limit\"")]
+    stop_reason: String,
 }
 
-/// Order-crossover (OX1) operator for permutation chromosomes.
-fn ox_crossover(p1: &[usize], p2: &[usize], rng: &mut WasmRng) -> Vec<usize> {
-    use std::collections::HashSet;
-
-    let n = p1.len();
-    let a = rng.next_usize(n);
-    let b = rng.next_usize(n);
-    let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
-
-    let mut child = vec![usize::MAX; n];
-    // Copy the segment [lo..=hi] from p1
-    child[lo..=hi].copy_from_slice(&p1[lo..=hi]);
-    // Build a set of genes already placed for O(1) membership tests
-    let used: HashSet<usize> = child[lo..=hi].iter().copied().collect();
-    // Fill remaining positions in p2 order
-    let mut pos = (hi + 1) % n;
-    for &gene in p2.iter().cycle().skip(hi + 1).take(n) {
-        if used.contains(&gene) {
-            continue;
-        }
-        child[pos] = gene;
-        pos = (pos + 1) % n;
-        if pos == lo {
-            break;
-        }
-    }
-    child
-}
-
-/// Swap mutation: swap two random positions.
-fn swap_mutate(tour: &mut [usize], rng: &mut WasmRng) {
-    let n = tour.len();
-    let i = rng.next_usize(n);
-    let j = rng.next_usize(n);
-    tour.swap(i, j);
-}
-
-/// Runs a Genetic Algorithm for TSP.
+/// Runs the crate's genetic algorithm ([`crate::ga::GaRunner`]) on the
+/// travelling-salesman tour over `nodes`: order crossover, swap mutation,
+/// tournament selection, a nearest-neighbour tour in the first population.
 ///
 /// # Arguments
 /// `config` — native JS object with fields:
-/// - `nodes`: `[[x, y], ...]` (required)
-/// - `population_size`: integer (default 100)
-/// - `generations`: integer (default 200)
+/// - `nodes`: `[[x, y], ...]` (required, at least 2)
+/// - `population_size`: integer (default 100, at least 2)
+/// - `generations`: integer (default 200, at least 1) — run as given
 /// - `mutation_rate`: float 0–1 (default 0.05)
+/// - `seed`: whole number 0 to 2^64 − 1 (optional) — reproducible runs
+/// - `time_limit_ms`: whole number, at least 1 (optional)
 ///
 /// # Returns
-/// JS object with `best_distance`, `best_tour`, `generations_run`.
+/// JS object with `best_distance`, `best_tour`, `generations_run`,
+/// `stop_reason`.
 #[wasm_bindgen(unchecked_return_type = "GaResult")]
 pub fn run_ga(
     #[wasm_bindgen(unchecked_param_type = "GaConfig")] config: JsValue,
@@ -747,100 +820,38 @@ pub fn run_ga(
         population_size,
         generations,
     } = check_ga(&config).map_err(js_err)?;
-    let n = config.nodes.len();
+    let seed = seed(config.seed).map_err(js_err)?;
+    let time_limit = time_limit(config.time_limit_ms).map_err(js_err)?;
 
-    let mut rng = WasmRng::new();
-    let nodes = &config.nodes;
-
-    // Initialise population: first individual = nearest-neighbour, rest random.
-    let mut population: Vec<Vec<usize>> = {
-        let nn = nearest_neighbour_tour(nodes);
-        let mut pop = vec![nn];
-        while pop.len() < population_size {
-            let mut tour: Vec<usize> = (0..n).collect();
-            shuffle(&mut tour, &mut rng);
-            pop.push(tour);
-        }
-        pop
-    };
-
-    let mut distances: Vec<f64> = population.iter().map(|t| tour_distance(t, nodes)).collect();
-
-    let best_idx = distances
-        .iter()
-        .enumerate()
-        .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-        .map(|(i, _)| i)
-        .expect("population non-empty");
-
-    let mut best_tour = population[best_idx].clone();
-    let mut best_dist = distances[best_idx];
-
-    let elite_count = (population_size / 10).max(1);
-
-    for _ in 0..generations {
-        // Sort by distance (ascending)
-        let mut indexed: Vec<usize> = (0..population_size).collect();
-        indexed.sort_by(|&a, &b| {
-            distances[a]
-                .partial_cmp(&distances[b])
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-
-        let mut next_pop: Vec<Vec<usize>> = Vec::with_capacity(population_size);
-        let mut next_dist: Vec<f64> = Vec::with_capacity(population_size);
-
-        // Elitism: keep best individuals unchanged
-        for &idx in indexed.iter().take(elite_count) {
-            next_pop.push(population[idx].clone());
-            next_dist.push(distances[idx]);
-        }
-
-        // Fill rest with tournament selection + OX crossover + swap mutation
-        while next_pop.len() < population_size {
-            // Tournament selection (size 3) for two parents
-            let p1 = tournament_select(&distances, 3, &mut rng);
-            let p2 = tournament_select(&distances, 3, &mut rng);
-
-            let mut child = ox_crossover(&population[p1], &population[p2], &mut rng);
-
-            if rng.next_f64() < config.mutation_rate {
-                swap_mutate(&mut child, &mut rng);
-            }
-
-            let d = tour_distance(&child, nodes);
-            if d < best_dist {
-                best_dist = d;
-                best_tour = child.clone();
-            }
-            next_pop.push(child);
-            next_dist.push(d);
-        }
-
-        population = next_pop;
-        distances = next_dist;
+    // Every child comes from order crossover, the best tenth (at least one)
+    // is carried over, and the run goes the generations it is given.
+    let elite_ratio = (0.1_f64).max(1.0 / population_size as f64).min(0.5);
+    let mut runner_config = crate::ga::GaConfig::default()
+        .with_population_size(population_size)
+        .with_max_generations(generations)
+        .with_selection(crate::ga::Selection::Tournament(3))
+        .with_elite_ratio(elite_ratio)
+        .with_crossover_rate(1.0)
+        .with_mutation_rate(config.mutation_rate)
+        .with_stagnation_limit(0)
+        .with_parallel(false);
+    if let Some(seed) = seed {
+        runner_config = runner_config.with_seed(seed);
     }
-
-    let result = GaResult {
-        best_distance: best_dist,
-        best_tour,
-        generations_run: generations,
-    };
-
-    to_js(&result)
-}
-
-/// Tournament selection: pick the best of `k` random individuals.
-fn tournament_select(distances: &[f64], k: usize, rng: &mut WasmRng) -> usize {
-    let n = distances.len();
-    let mut best_idx = rng.next_usize(n);
-    for _ in 1..k {
-        let challenger = rng.next_usize(n);
-        if distances[challenger] < distances[best_idx] {
-            best_idx = challenger;
-        }
+    if let Some(ms) = time_limit {
+        runner_config = runner_config.with_time_limit_ms(ms);
     }
-    best_idx
+    let problem = Tsp {
+        nodes: config.nodes,
+    };
+    let result = crate::ga::GaRunner::run(&problem, &runner_config).map_err(runner_refused)?;
+
+    to_js(&GaResult {
+        best_distance: result.best_fitness,
+        best_tour: result.best.order,
+        generations_run: result.generations,
+        stop_reason: result.stop_reason.name().to_string(),
+    })
 }
 
 // ============================================================================
@@ -861,6 +872,14 @@ struct SaConfig {
     #[serde(default = "default_iterations", deserialize_with = "whole")]
     #[tsify(optional, type = "number")]
     iterations: i128,
+    /// RNG seed, a whole number from 0 to 2^64 - 1 (as `run_ga`'s).
+    #[serde(default, deserialize_with = "optional_whole")]
+    #[tsify(optional, type = "number | null")]
+    seed: Option<i128>,
+    /// Wall-clock budget in milliseconds, at least 1 (as `run_ga`'s).
+    #[serde(default, deserialize_with = "optional_whole")]
+    #[tsify(optional, type = "number | null")]
+    time_limit_ms: Option<i128>,
 }
 
 fn default_temp() -> f64 {
@@ -878,114 +897,78 @@ struct SaResult {
     best_distance: f64,
     best_tour: Vec<usize>,
     iterations_run: usize,
+    /// Why the run stopped: `"iteration_limit"` (it ran its `iterations`),
+    /// `"completed"` (the temperature cooled to nothing first) or
+    /// `"time_limit"`.
+    #[tsify(type = "\"iteration_limit\" | \"completed\" | \"time_limit\"")]
+    stop_reason: String,
 }
 
-/// Runs Simulated Annealing for TSP.
-///
-/// Uses geometric cooling (`T *= cooling_rate` per iteration).
-/// Neighbour move: 2-opt segment reversal between two random positions.
+/// Runs the crate's simulated annealing ([`crate::sa::SaRunner`]) on the
+/// travelling-salesman tour over `nodes`, from the nearest-neighbour tour,
+/// with 2-opt moves and geometric cooling (`T *= cooling_rate` per move).
 ///
 /// # Arguments
 /// `config` — native JS object with fields:
-/// - `nodes`: `[[x, y], ...]` (required)
-/// - `initial_temp`: float (default 1000.0)
+/// - `nodes`: `[[x, y], ...]` (required, at least 2)
+/// - `initial_temp`: float (default 1000.0, > 0)
 /// - `cooling_rate`: float in (0, 1) (default 0.995)
-/// - `iterations`: integer (default 5000)
+/// - `iterations`: integer (default 5000, at least 1)
+/// - `seed`, `time_limit_ms`: as `run_ga`'s
 ///
 /// # Returns
-/// JS object with `best_distance`, `best_tour`, `iterations_run`.
+/// JS object with `best_distance`, `best_tour`, `iterations_run`,
+/// `stop_reason`.
 #[wasm_bindgen(unchecked_return_type = "SaResult")]
 pub fn run_sa(
     #[wasm_bindgen(unchecked_param_type = "SaConfig")] config: JsValue,
 ) -> Result<JsValue, JsValue> {
     let config: SaConfig = from_js(config, "config")?;
     let iterations = check_sa(&config).map_err(js_err)?;
-
-    let mut rng = WasmRng::new();
-    let (best, best_dist) = anneal(
-        &config.nodes,
+    let seed = seed(config.seed).map_err(js_err)?;
+    let time_limit = time_limit(config.time_limit_ms).map_err(js_err)?;
+    to_js(&anneal(
+        config.nodes,
         config.initial_temp,
         config.cooling_rate,
         iterations,
-        &mut rng,
-    );
-
-    let result = SaResult {
-        best_distance: best_dist,
-        best_tour: best,
-        iterations_run: iterations,
-    };
-
-    to_js(&result)
+        seed,
+        time_limit,
+    )?)
 }
 
-/// Simulated annealing over 2-opt moves, from a nearest-neighbour tour.
-///
-/// Returns the best tour seen and its length. The length is tracked
-/// incrementally from each move's delta, which is exact for every move except
-/// one: reversing the whole tour (`lo == 0`, `hi == n - 1`). On a cycle that
-/// changes nothing, but the two edges the delta formula reads are then the
-/// same edge, so the formula reported a saving of twice its length. Summed
-/// over a run, the tracked length drifted below zero and the "best" tour was
-/// chosen by a length it did not have; the move is skipped like `lo == hi`.
+/// The crate's SA runner over 2-opt moves from the nearest-neighbour tour,
+/// cooling geometrically once per move.
 fn anneal(
-    nodes: &[[f64; 2]],
+    nodes: Vec<[f64; 2]>,
     initial_temp: f64,
     cooling_rate: f64,
     iterations: usize,
-    rng: &mut WasmRng,
-) -> (Vec<usize>, f64) {
-    let n = nodes.len();
-    let mut current = nearest_neighbour_tour(nodes);
-    let mut current_dist = tour_distance(&current, nodes);
-    let mut best = current.clone();
-    let mut best_dist = current_dist;
-
-    let mut temp = initial_temp;
-
-    for _ in 0..iterations {
-        // 2-opt neighbour: reverse a random sub-segment
-        let i = rng.next_usize(n);
-        let j = rng.next_usize(n);
-        let (lo, hi) = if i <= j { (i, j) } else { (j, i) };
-
-        if lo == hi || hi - lo == n - 1 {
-            temp *= cooling_rate;
-            continue;
-        }
-
-        // Compute delta without full tour recalculation (O(1) for 2-opt)
-        let before_lo = if lo == 0 { n - 1 } else { lo - 1 };
-        let after_hi = (hi + 1) % n;
-
-        let old_cost = node_dist(&nodes[current[before_lo]], &nodes[current[lo]])
-            + node_dist(&nodes[current[hi]], &nodes[current[after_hi]]);
-        let new_cost = node_dist(&nodes[current[before_lo]], &nodes[current[hi]])
-            + node_dist(&nodes[current[lo]], &nodes[current[after_hi]]);
-        let delta = new_cost - old_cost;
-
-        let accept = if delta < 0.0 {
-            true
-        } else if temp > 1e-15 {
-            rng.next_f64() < (-delta / temp).exp()
-        } else {
-            false
-        };
-
-        if accept {
-            current[lo..=hi].reverse();
-            current_dist += delta;
-
-            if current_dist < best_dist {
-                best_dist = current_dist;
-                best = current.clone();
-            }
-        }
-
-        temp *= cooling_rate;
+    seed: Option<u64>,
+    time_limit: Option<u64>,
+) -> Result<SaResult, JsValue> {
+    let mut runner_config = crate::sa::SaConfig::default()
+        .with_initial_temperature(initial_temp)
+        .with_min_temperature(f64::MIN_POSITIVE.min(initial_temp / 2.0))
+        .with_cooling(crate::sa::CoolingSchedule::Geometric {
+            alpha: cooling_rate,
+        })
+        .with_iterations_per_temperature(1)
+        .with_max_iterations(iterations);
+    if let Some(seed) = seed {
+        runner_config = runner_config.with_seed(seed);
     }
-
-    (best, best_dist)
+    if let Some(ms) = time_limit {
+        runner_config = runner_config.with_time_limit_ms(ms);
+    }
+    let result =
+        crate::sa::SaRunner::run(&Tsp { nodes }, &runner_config).map_err(runner_refused)?;
+    Ok(SaResult {
+        best_distance: result.best_cost,
+        best_tour: result.best,
+        iterations_run: result.iterations,
+        stop_reason: result.stop_reason.name().to_string(),
+    })
 }
 
 // ============================================================================
@@ -1062,35 +1045,64 @@ mod tests {
 
     use super::*;
 
-    /// The reported length is the length of the reported tour, whatever the
-    /// seed. The whole-tour reversal made the tracked length drift below zero:
-    /// four nodes, 200 iterations, and the result said -72.8.
+    /// The reported length is the length of the reported tour, and a seed
+    /// reproduces the run.
     #[test]
-    fn anneal_reports_the_length_of_the_tour_it_returns() {
+    fn anneal_reports_its_tour_and_a_seed_reproduces_it() {
         let nodes = vec![[0.0, 0.0], [1.0, 1.0], [2.0, 0.0], [1.0, -1.0], [3.0, 2.0]];
-        for seed in 0..200u64 {
-            let mut rng = WasmRng::with_seed(seed);
-            let (tour, dist) = anneal(&nodes, 1000.0, 0.995, 500, &mut rng);
-            let actual = tour_distance(&tour, &nodes);
-            assert!(
-                (dist - actual).abs() < 1e-9,
-                "seed {seed}: reported {dist}, tour measures {actual}"
-            );
-            let mut sorted = tour.clone();
-            sorted.sort_unstable();
-            assert_eq!(sorted, (0..nodes.len()).collect::<Vec<_>>());
+        for seed in 0..50 {
+            let r = anneal(nodes.clone(), 1000.0, 0.995, 500, Some(seed), None)
+                .unwrap_or_else(|_| panic!("seed {seed}"));
+            let actual = tour_distance(&r.best_tour, &nodes);
+            assert!((r.best_distance - actual).abs() < 1e-9, "seed {seed}");
+            assert_eq!(r.iterations_run, 500);
+            assert_eq!(r.stop_reason, "iteration_limit");
+            let again = anneal(nodes.clone(), 1000.0, 0.995, 500, Some(seed), None)
+                .unwrap_or_else(|_| panic!("seed {seed}"));
+            assert_eq!(again.best_tour, r.best_tour);
         }
     }
 
-    /// On two nodes the only move is the whole-tour reversal, which the delta
-    /// formula prices at minus twice the edge.
     #[test]
     fn anneal_on_two_nodes_keeps_the_single_tour_length() {
-        let nodes = vec![[0.0, 0.0], [3.0, 4.0]];
-        let mut rng = WasmRng::with_seed(7);
-        let (tour, dist) = anneal(&nodes, 1000.0, 0.995, 100, &mut rng);
-        assert!((dist - 10.0).abs() < 1e-12, "got {dist}");
-        assert!((tour_distance(&tour, &nodes) - 10.0).abs() < 1e-12);
+        let nodes = vec![[0.0, 0.0], [5.0, 0.0]];
+        let r = anneal(nodes.clone(), 1000.0, 0.995, 100, Some(7), None).expect("runs");
+        assert!((r.best_distance - 10.0).abs() < 1e-12);
+        assert!((tour_distance(&r.best_tour, &nodes) - 10.0).abs() < 1e-12);
+    }
+
+    /// The GA is the crate's runner: a seed reproduces it and it says why it
+    /// stopped.
+    #[test]
+    fn the_ga_is_reproducible_from_a_seed() {
+        use crate::ga::{GaConfig as Runner, GaRunner};
+        let problem = Tsp {
+            nodes: make_nodes(),
+        };
+        let config = Runner::default()
+            .with_population_size(20)
+            .with_max_generations(30)
+            .with_stagnation_limit(0)
+            .with_parallel(false)
+            .with_seed(11);
+        let a = GaRunner::run(&problem, &config).expect("runs");
+        let b = GaRunner::run(&problem, &config).expect("runs");
+        assert_eq!(a.best.order, b.best.order);
+        assert_eq!(a.generations, 30);
+        assert_eq!(a.stop_reason.name(), "iteration_limit");
+        assert!((a.best_fitness - tour_distance(&a.best.order, &problem.nodes)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_seed_and_a_time_limit_are_checked() {
+        assert_eq!(
+            seed(Some(-1)).expect_err("negative").fields["parameter"],
+            "seed"
+        );
+        assert_eq!(seed(Some(7)).expect("in range"), Some(7));
+        let e = time_limit(Some(0)).expect_err("zero");
+        assert_eq!(e.fields["parameter"], "time_limit_ms");
+        assert_eq!(e.fields["min"], 1.0);
     }
 
     fn make_nodes() -> Vec<[f64; 2]> {
@@ -1118,31 +1130,6 @@ mod tests {
         for &n in &tour {
             assert!(!seen[n], "node {n} visited twice");
             seen[n] = true;
-        }
-    }
-
-    #[test]
-    fn test_wasm_rng_range() {
-        let mut rng = WasmRng { state: 12345 };
-        for _ in 0..1000 {
-            let v = rng.next_usize(10);
-            assert!(v < 10);
-            let f = rng.next_f64();
-            assert!((0.0..1.0).contains(&f));
-        }
-    }
-
-    #[test]
-    fn test_ox_crossover_valid_permutation() {
-        let mut rng = WasmRng { state: 42 };
-        let p1 = vec![0, 1, 2, 3, 4];
-        let p2 = vec![4, 3, 2, 1, 0];
-        let child = ox_crossover(&p1, &p2, &mut rng);
-        assert_eq!(child.len(), 5);
-        let mut seen = [false; 5];
-        for &g in &child {
-            assert!(!seen[g], "duplicate gene {g}");
-            seen[g] = true;
         }
     }
 

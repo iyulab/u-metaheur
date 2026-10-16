@@ -123,8 +123,9 @@ re-bundling services fail on the same import. Use a bundler or Node.
 
 ### Quick Start
 
-Both functions solve a travelling-salesman tour over `nodes` (`[x, y]` pairs)
-and return the best tour found and its closed length:
+Both functions run this crate's own runners — `GaRunner` and `SaRunner` — on a
+travelling-salesman tour over `nodes` (`[x, y]` pairs), and return the best tour
+found, its closed length, and why the run stopped:
 
 ```js
 import { run_ga, run_sa } from '@iyulab/u-metaheur';
@@ -132,15 +133,24 @@ import { run_ga, run_sa } from '@iyulab/u-metaheur';
 // The corners of a unit square: the shortest closed tour is its perimeter, 4.
 const nodes = [[0, 0], [1, 0], [1, 1], [0, 1]];
 
-const ga = run_ga({ nodes, population_size: 30, generations: 50 });
-const sa = run_sa({ nodes, iterations: 2000 });
-console.log(ga.best_distance, ga.best_tour); // 4 [ ... ]
+const ga = run_ga({ nodes, population_size: 30, generations: 50, seed: 7 });
+const sa = run_sa({ nodes, iterations: 2000, seed: 7 });
+console.log(ga.best_distance, ga.best_tour, ga.stop_reason); // 4 [ ... ] iteration_limit
 console.log(sa.best_distance, sa.iterations_run);
+
+// The same seed gives the same tour.
+console.log(run_ga({ nodes, population_size: 30, generations: 50, seed: 7 }).best_tour.join() === ga.best_tour.join()); // true
 ```
 
 `run_ga` also takes `mutation_rate`; `run_sa` takes `initial_temp` and
-`cooling_rate`. Every setting is optional except `nodes`, and a setting the
-function does not have is rejected rather than ignored.
+`cooling_rate`. Both take `seed` (a whole number from 0 to 2^64 − 1 — a run that
+ends on its own budget is reproduced exactly) and `time_limit_ms` (at least 1 —
+the run returns the best tour found by then). `stop_reason` is
+`"iteration_limit"` when the run spent its `generations` / `iterations`,
+`"time_limit"` when the clock ran out first, and for `run_sa` `"completed"` when
+the temperature cooled to nothing first. Every setting is optional except
+`nodes`, and a setting the function does not have is rejected rather than
+ignored.
 
 `codes()` returns every refusal `code` the functions throw, with the fields that
 can come with it — `{ refusals: [{ code, fields }], violations: [] }` — built from
@@ -164,7 +174,7 @@ try {
 | `code` | Fields | Meaning |
 |---|---|---|
 | `insufficient_data` | `parameter` (`"nodes"`), `min`, `got` | Fewer than 2 nodes |
-| `parameter_out_of_range` | `parameter`, `min`, `max`, `exclusive_min`, `exclusive_max`, `got` | `population_size < 2`, `generations` or `iterations` below 1 (a negative count included: `population_size: -1` is `{ min: 2, max: null, got: -1 }`, the same as `1`), `initial_temp ≤ 0`, or `cooling_rate` outside (0, 1). `min` / `max` are the closed (included) bounds and are always present — `null` on a side that is open or unbounded; `exclusive_min` / `exclusive_max` are the open (excluded) bounds, present only when that end is open: `initial_temp` (> 0) is refused with `min: null, exclusive_min: 0`, `cooling_rate` with `exclusive_min: 0, exclusive_max: 1` |
+| `parameter_out_of_range` | `parameter`, `min`, `max`, `exclusive_min`, `exclusive_max`, `got` | `population_size < 2`, `generations`, `iterations` or `time_limit_ms` below 1, a `seed` outside 0 to 2^64 − 1 (a negative count included: `population_size: -1` is `{ min: 2, max: null, got: -1 }`, the same as `1`), `initial_temp ≤ 0`, or `cooling_rate` outside (0, 1). `min` / `max` are the closed (included) bounds and are always present — `null` on a side that is open or unbounded; `exclusive_min` / `exclusive_max` are the open (excluded) bounds, present only when that end is open: `initial_temp` (> 0) is refused with `min: null, exclusive_min: 0`, `cooling_rate` with `exclusive_min: 0, exclusive_max: 1` |
 | `value_not_finite` | `parameter`, `index` | A NaN or ±Infinity anywhere in an argument — `parameter` is the path to it (`config.nodes[1]`), `index` its position in that array, or `null` |
 | `malformed_input` | `parameter`, `index` (inside an array) | An argument of the wrong shape or type (a missing or unknown key), a count that is not a whole number (`population_size: 2.5` — `parameter` is the field), or a JSON string |
 | `internal` | — | A result the package could not hand back — a fault in the package, not in the input; please report it |
