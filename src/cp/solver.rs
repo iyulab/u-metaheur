@@ -156,7 +156,7 @@ impl CpSolver for SimpleCpSolver {
             return CpSolution::empty(SolverStatus::ModelInvalid);
         }
 
-        let start_time = std::time::Instant::now();
+        let start_time = web_time::Instant::now();
 
         // Collect all interval names, sorted for determinism
         let mut names: Vec<&String> = model.intervals.keys().collect();

@@ -26,7 +26,9 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 - `GaConfig::time_limit_ms` is honoured in WebAssembly: the limit was read
   through `std::time::Instant`, which WebAssembly lacks, so it was compiled
   out there and a run went to its generation budget. Every runner now reads
-  the clock through `web-time` (`performance.now()` in WebAssembly).
+  the clock through `web-time` (`performance.now()` in WebAssembly), and so
+  does `SimpleCpSolver`'s `solve_time_ms`, whose `Instant::now()` panicked in
+  WebAssembly.
 - A run with a large generation or iteration budget — the natural setting
   when a time limit is what ends it — no longer reserves its history for the
   whole budget up front: GA, BRKGA, Tabu and VNS allocated
