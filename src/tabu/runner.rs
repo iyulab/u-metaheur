@@ -76,11 +76,16 @@ impl TabuRunner {
         let mut tabu_queue: VecDeque<String> = VecDeque::new();
         let mut tabu_set: HashSet<String> = HashSet::new();
 
-        let mut cost_history = Vec::with_capacity(config.max_iterations);
+        let mut cost_history = Vec::new();
         let mut no_improve_count = 0;
         let mut stop_reason = crate::StopReason::IterationLimit;
 
+        let deadline = crate::stop::Deadline::start(config.time_limit_ms);
         for iteration in 0..config.max_iterations {
+            if deadline.passed() {
+                stop_reason = crate::StopReason::TimeLimit;
+                break;
+            }
             // Generate neighborhood
             let neighbors = problem.neighbors(&current, &mut rng);
 
@@ -255,6 +260,18 @@ mod tests {
                 window[0]
             );
         }
+    }
+
+    #[test]
+    fn test_tabu_time_limit() {
+        let problem = DiscretizedQuadratic;
+        let config = TabuConfig::default()
+            .with_max_iterations(usize::MAX)
+            .with_max_no_improve(usize::MAX)
+            .with_time_limit_ms(20)
+            .with_seed(42);
+        let result = TabuRunner::run(&problem, &config);
+        assert_eq!(result.stop_reason, crate::StopReason::TimeLimit);
     }
 
     #[test]

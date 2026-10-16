@@ -11,8 +11,6 @@ use rand::RngExt;
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-#[cfg(not(target_arch = "wasm32"))]
-use std::time::Instant;
 use u_numflow::random::create_rng;
 
 /// Per-generation population statistics.
@@ -117,14 +115,13 @@ impl GaRunner {
 
         // 3. Track best
         let mut best = find_best(&population).clone();
-        let mut fitness_history = Vec::with_capacity(config.max_generations);
+        let mut fitness_history = Vec::new();
         fitness_history.push(best.fitness().to_f64());
 
         let mut stagnation_counter = 0usize;
         let mut stop_reason = StopReason::IterationLimit;
-        let mut generation_stats = Vec::with_capacity(config.max_generations);
-        #[cfg(not(target_arch = "wasm32"))]
-        let start_time = Instant::now();
+        let mut generation_stats = Vec::new();
+        let deadline = crate::stop::Deadline::start(config.time_limit_ms);
 
         // Record initial population stats
         generation_stats.push(compute_generation_stats(&population, 0));
@@ -139,13 +136,9 @@ impl GaRunner {
                 }
             }
 
-            // Check time limit (not available on WASM — no std::time::Instant)
-            #[cfg(not(target_arch = "wasm32"))]
-            if let Some(limit_ms) = config.time_limit_ms {
-                if start_time.elapsed().as_millis() as u64 >= limit_ms {
-                    stop_reason = StopReason::TimeLimit;
-                    break;
-                }
+            if deadline.passed() {
+                stop_reason = StopReason::TimeLimit;
+                break;
             }
 
             // Sort population by fitness (ascending = best first)

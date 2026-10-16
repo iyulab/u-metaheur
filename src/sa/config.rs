@@ -77,6 +77,10 @@ pub struct SaConfig {
 
     /// Random seed for reproducibility.
     pub seed: Option<u64>,
+    /// Wall-clock budget in milliseconds: the run stops once it is spent and
+    /// returns the best solution found by then (`StopReason::TimeLimit`).
+    /// `None` (the default) for no limit.
+    pub time_limit_ms: Option<u64>,
 }
 
 impl Default for SaConfig {
@@ -88,6 +92,7 @@ impl Default for SaConfig {
             iterations_per_temperature: 100,
             max_iterations: 0,
             seed: None,
+            time_limit_ms: None,
         }
     }
 }
@@ -123,8 +128,22 @@ impl SaConfig {
         self
     }
 
+    /// Sets the wall-clock budget in milliseconds.
+    pub fn with_time_limit_ms(mut self, ms: u64) -> Self {
+        self.time_limit_ms = Some(ms);
+        self
+    }
+
     /// Validates the configuration.
     pub fn validate(&self) -> Result<(), ConfigError> {
+        if self.time_limit_ms == Some(0) {
+            return Err(ConfigError::out_of_range(
+                "time_limit_ms",
+                1.0..,
+                0.0,
+                "positive (or unset)",
+            ));
+        }
         if !(self.initial_temperature > 0.0 && self.initial_temperature.is_finite()) {
             return Err(ConfigError::out_of_range(
                 "initial_temperature",

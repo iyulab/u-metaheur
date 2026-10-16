@@ -76,12 +76,17 @@ impl VnsRunner {
         let mut best_cost = problem.cost(&current);
         let mut best_iteration = 0;
 
-        let mut cost_history = Vec::with_capacity(config.max_iterations);
+        let mut cost_history = Vec::new();
         let mut no_improve_count = 0;
         let mut iteration = 0;
         let mut stop_reason = crate::StopReason::IterationLimit;
 
+        let deadline = crate::stop::Deadline::start(config.time_limit_ms);
         for outer in 0..config.max_iterations {
+            if deadline.passed() {
+                stop_reason = crate::StopReason::TimeLimit;
+                break;
+            }
             let mut k = 0;
 
             while k < k_max {
@@ -399,6 +404,18 @@ mod tests {
         assert_eq!(config.max_iterations, 1000);
         assert_eq!(config.max_no_improve, 50);
         assert_eq!(config.seed, Some(123));
+    }
+
+    #[test]
+    fn test_vns_time_limit() {
+        let problem = DiscreteQuadratic;
+        let config = VnsConfig::default()
+            .with_max_iterations(usize::MAX)
+            .with_max_no_improve(usize::MAX)
+            .with_time_limit_ms(20)
+            .with_seed(42);
+        let result = VnsRunner::run(&problem, &config);
+        assert_eq!(result.stop_reason, crate::StopReason::TimeLimit);
     }
 
     #[test]

@@ -99,12 +99,13 @@ impl BrkgaRunner {
         });
 
         let mut best = population[0].clone();
-        let mut cost_history = Vec::with_capacity(config.max_generations);
+        let mut cost_history = Vec::new();
         cost_history.push(best.cost);
 
         let mut stagnation_counter = 0usize;
         let mut stop_reason = StopReason::IterationLimit;
 
+        let deadline = crate::stop::Deadline::start(config.time_limit_ms);
         // Evolutionary loop
         for _gen in 0..config.max_generations {
             if let Some(ref flag) = cancel {
@@ -112,6 +113,10 @@ impl BrkgaRunner {
                     stop_reason = StopReason::Cancelled;
                     break;
                 }
+            }
+            if deadline.passed() {
+                stop_reason = StopReason::TimeLimit;
+                break;
             }
 
             let mut next_gen: Vec<Chromosome> = Vec::with_capacity(pop_size);
@@ -309,6 +314,24 @@ mod tests {
             result.stop_reason == StopReason::NoImprovement || result.generations < 1000,
             "expected early termination"
         );
+    }
+
+    #[test]
+    fn test_brkga_time_limit() {
+        let decoder = OneMaxDecoder;
+        let config = BrkgaConfig::new(20)
+            .with_population_size(50)
+            .with_max_generations(usize::MAX)
+            .with_stagnation_limit(0)
+            .with_time_limit_ms(20)
+            .with_seed(42)
+            .with_parallel(false);
+        let result = BrkgaRunner::run(&decoder, &config).unwrap();
+        assert_eq!(result.stop_reason, StopReason::TimeLimit);
+        assert!(BrkgaConfig::new(20)
+            .with_time_limit_ms(0)
+            .validate()
+            .is_err());
     }
 
     #[test]

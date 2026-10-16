@@ -22,6 +22,10 @@ pub struct VnsConfig {
     pub max_no_improve: usize,
     /// Random seed (None for default seed).
     pub seed: Option<u64>,
+    /// Wall-clock budget in milliseconds: the run stops once it is spent and
+    /// returns the best solution found by then (`StopReason::TimeLimit`).
+    /// `None` (the default) for no limit.
+    pub time_limit_ms: Option<u64>,
 }
 
 impl Default for VnsConfig {
@@ -30,6 +34,7 @@ impl Default for VnsConfig {
             max_iterations: 500,
             max_no_improve: 200,
             seed: None,
+            time_limit_ms: None,
         }
     }
 }
@@ -50,6 +55,12 @@ impl VnsConfig {
     /// Sets the random seed.
     pub fn with_seed(mut self, seed: u64) -> Self {
         self.seed = Some(seed);
+        self
+    }
+
+    /// Sets the wall-clock budget in milliseconds.
+    pub fn with_time_limit_ms(mut self, ms: u64) -> Self {
+        self.time_limit_ms = Some(ms);
         self
     }
 }

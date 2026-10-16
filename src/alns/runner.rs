@@ -180,6 +180,7 @@ impl AlnsRunner {
         let mut cost_history = Vec::new();
         cost_history.push(best_cost);
 
+        let deadline = crate::stop::Deadline::start(config.time_limit_ms);
         for iteration in 0..config.max_iterations {
             if let Some(ref flag) = cancel {
                 if flag.load(Ordering::Relaxed) {
@@ -187,6 +188,11 @@ impl AlnsRunner {
                     iterations = iteration;
                     break;
                 }
+            }
+            if deadline.passed() {
+                stop_reason = StopReason::TimeLimit;
+                iterations = iteration;
+                break;
             }
 
             // Select operators via roulette wheel
@@ -493,6 +499,23 @@ mod tests {
         for &w in &result.repair_weights {
             assert!(w >= config.min_weight, "weight {w} below min");
         }
+    }
+
+    #[test]
+    fn test_alns_time_limit() {
+        let problem = SubsetProblem { n: 20 };
+        let destroy_ops = [RandomDestroy];
+        let repair_ops = [GreedyRepair];
+        let config = AlnsConfig::default()
+            .with_max_iterations(usize::MAX)
+            .with_time_limit_ms(20)
+            .with_seed(42);
+        let result = AlnsRunner::run(&problem, &destroy_ops, &repair_ops, &config).unwrap();
+        assert_eq!(result.stop_reason, StopReason::TimeLimit);
+        assert!(AlnsConfig::default()
+            .with_time_limit_ms(0)
+            .validate()
+            .is_err());
     }
 
     #[test]

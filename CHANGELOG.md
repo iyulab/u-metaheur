@@ -14,8 +14,24 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   starts from (seeds from constructive heuristics), before the random ones.
   The runner takes at most `population_size` of them; the default is none, so
   existing problems are unchanged.
+- **Breaking:** a wall-clock budget for every metaheuristic —
+  `time_limit_ms: Option<u64>` (and `with_time_limit_ms`) on `SaConfig`,
+  `AlnsConfig`, `BrkgaConfig`, `TabuConfig` and `VnsConfig`, as `GaConfig`
+  had. A run that spends it stops with `StopReason::TimeLimit` and the best
+  solution found by then; `Some(0)` is refused by `validate`. Breaking only for
+  code that builds these configs as struct literals.
 
 ### Fixed
+
+- `GaConfig::time_limit_ms` is honoured in WebAssembly: the limit was read
+  through `std::time::Instant`, which WebAssembly lacks, so it was compiled
+  out there and a run went to its generation budget. Every runner now reads
+  the clock through `web-time` (`performance.now()` in WebAssembly).
+- A run with a large generation or iteration budget — the natural setting
+  when a time limit is what ends it — no longer reserves its history for the
+  whole budget up front: GA, BRKGA, Tabu and VNS allocated
+  `max_generations` / `max_iterations` entries before starting, so
+  `usize::MAX` panicked (capacity overflow) and ten million reserved 80 MB.
 
 - A result the package fails to hand back to JavaScript is refused as
   `internal`, not as `malformed_input` with `parameter: "result"` — the fault

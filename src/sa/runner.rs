@@ -87,6 +87,7 @@ impl SaRunner {
         cost_history.push(best_cost);
 
         let mut step = 0usize; // temperature step counter
+        let deadline = crate::stop::Deadline::start(config.time_limit_ms);
 
         while temperature > config.min_temperature {
             if let Some(ref flag) = cancel {
@@ -94,6 +95,10 @@ impl SaRunner {
                     stop_reason = StopReason::Cancelled;
                     break;
                 }
+            }
+            if deadline.passed() {
+                stop_reason = StopReason::TimeLimit;
+                break;
             }
 
             let inner_iters = match config.cooling {
@@ -314,6 +319,25 @@ mod tests {
             "expected <= 100 iterations, got {}",
             result.iterations
         );
+    }
+
+    #[test]
+    fn test_sa_time_limit() {
+        let problem = QuadraticProblem;
+        // A schedule far longer than the budget.
+        let config = SaConfig::default()
+            .with_initial_temperature(1e10)
+            .with_min_temperature(1e-300)
+            .with_iterations_per_temperature(10_000)
+            .with_max_iterations(usize::MAX)
+            .with_time_limit_ms(20)
+            .with_seed(42);
+        let result = SaRunner::run(&problem, &config).expect("valid SaConfig");
+        assert_eq!(result.stop_reason, StopReason::TimeLimit);
+        assert!(SaConfig::default()
+            .with_time_limit_ms(0)
+            .validate()
+            .is_err());
     }
 
     #[test]

@@ -81,3 +81,31 @@ mod tests {
         }
     }
 }
+
+/// A wall-clock budget counted from the start of a run: `time_limit_ms` of
+/// the runner's config, `None` for no limit.
+///
+/// Read through `web_time`, which is `std::time` natively and
+/// `performance.now()` in WebAssembly -- `std::time::Instant` panics there, so
+/// a limit read through it could only be honoured natively.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Deadline {
+    start: web_time::Instant,
+    limit_ms: Option<u64>,
+}
+
+impl Deadline {
+    /// The budget `limit_ms`, starting now.
+    pub(crate) fn start(limit_ms: Option<u64>) -> Self {
+        Self {
+            start: web_time::Instant::now(),
+            limit_ms,
+        }
+    }
+
+    /// Whether the budget is spent.
+    pub(crate) fn passed(&self) -> bool {
+        self.limit_ms
+            .is_some_and(|ms| self.start.elapsed().as_millis() >= u128::from(ms))
+    }
+}
