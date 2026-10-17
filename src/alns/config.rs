@@ -24,7 +24,7 @@ use std::ops::Bound::{Excluded, Included, Unbounded};
 ///
 /// By default the temperatures are multiples of the objective's own scale
 /// ([`TemperatureScale::Calibrated`]): before the run, `samples` destroy/repair
-/// candidates are drawn from the initial solution and `sigma` is the mean amount
+/// candidates are drawn from the initial solution and `sigma` is the median amount
 /// by which they are worse. `initial_temperature = 1` then accepts a typical
 /// worsening with probability `1/e` whatever the unit of the cost, so the same
 /// configuration serves a fitness of 0.3 and one of 3000. (Ropke & Pisinger

@@ -12,7 +12,7 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 - `TemperatureScale` (`SaConfig::temperature_scale`, `AlnsConfig::temperature_scale`):
   what a configured temperature is measured in. `Calibrated { samples }` makes the
-  start and the floor multiples of the objective's own scale -- the mean amount by
+  start and the floor multiples of the objective's own scale -- the median amount by
   which a neighbouring solution (a destroy/repair candidate, for ALNS) is worse than
   the initial one, sampled before the run -- so `initial_temperature = 1` accepts a
   typical worsening with probability 1/e whatever the unit of the cost.
