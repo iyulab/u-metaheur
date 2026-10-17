@@ -36,6 +36,12 @@ use std::ops::Bound::{Excluded, Included, Unbounded};
 /// between neighbouring solutions accepts nearly every candidate -- a random walk
 /// that only remembers the best.
 ///
+/// `cooling_rate` is per iteration and independent of `max_iterations`: the
+/// temperature reaches `min_temperature` after `ln(min / initial) / ln(rate)`
+/// iterations, so pair them (`rate = (min / initial)^(1 / max_iterations)` ends
+/// the schedule with the budget); a rate that leaves the run near its start for
+/// the whole budget is a random walk to the last iteration.
+///
 /// # References
 ///
 /// Ropke & Pisinger (2006), Section 3
