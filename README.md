@@ -78,10 +78,10 @@ assert!((result.best - 3.0).abs() < 0.1);
 
 ```toml
 [dependencies]
-u-metaheur = "0.13"
+u-metaheur = "0.14"
 
 # with serde support
-u-metaheur = { version = "0.13", features = ["serde"] }
+u-metaheur = { version = "0.14", features = ["serde"] }
 ```
 
 ## Build & Test
