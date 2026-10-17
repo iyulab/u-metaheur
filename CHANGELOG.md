@@ -8,6 +8,12 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Changed
+
+- The ALNS and SA configuration docs state that the temperature is in the unit of the
+  fitness (cost) and how to pick it: a start far above the fitness differences
+  between neighbouring solutions accepts nearly every candidate.
+
 ## [0.13.0] - 2026-10-17
 
 Depends on u-numflow 0.14.

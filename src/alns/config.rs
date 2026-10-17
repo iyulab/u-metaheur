@@ -22,6 +22,16 @@ use std::ops::Bound::{Excluded, Included, Unbounded};
 /// `exp(-delta / temperature)`. Temperature starts at `initial_temperature`
 /// and decays geometrically by `cooling_rate` each iteration.
 ///
+/// The temperature is in the unit of the solution's fitness: a candidate worse
+/// by `delta` is accepted with probability `exp(-delta / temperature)`. A start
+/// far above the fitness differences between neighbouring solutions accepts
+/// nearly every candidate (a random walk that only remembers the best), and the
+/// default of 100 with a rate of 0.9995 is such a start when fitness differences
+/// are fractions of a unit. Pick it so that a solution a few percent worse than
+/// the first one is accepted about half the time (`temperature ~ 0.05 * fitness
+/// / ln 2`), and a rate that cools it near the floor within the iteration
+/// budget.
+///
 /// # References
 ///
 /// Ropke & Pisinger (2006), Section 3

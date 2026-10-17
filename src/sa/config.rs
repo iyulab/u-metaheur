@@ -58,7 +58,10 @@ impl Default for CoolingSchedule {
 /// ```
 #[derive(Debug, Clone)]
 pub struct SaConfig {
-    /// Initial temperature. Higher values allow more exploration.
+    /// Initial temperature, in the unit of the cost: a move worse by `delta` is
+    /// accepted with probability `exp(-delta / temperature)`. Higher values
+    /// allow more exploration; one far above the cost differences between
+    /// neighbouring solutions accepts nearly every move, which is a random walk.
     pub initial_temperature: f64,
 
     /// Minimum temperature. The algorithm stops when T drops below this.
