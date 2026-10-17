@@ -1,6 +1,6 @@
 //! ALNS configuration.
 
-use crate::ConfigError;
+use crate::{ConfigError, TemperatureScale};
 use std::ops::Bound::{Excluded, Included, Unbounded};
 
 /// Configuration for the ALNS algorithm.
@@ -22,15 +22,19 @@ use std::ops::Bound::{Excluded, Included, Unbounded};
 /// `exp(-delta / temperature)`. Temperature starts at `initial_temperature`
 /// and decays geometrically by `cooling_rate` each iteration.
 ///
-/// The temperature is in the unit of the solution's fitness: a candidate worse
-/// by `delta` is accepted with probability `exp(-delta / temperature)`. A start
-/// far above the fitness differences between neighbouring solutions accepts
-/// nearly every candidate (a random walk that only remembers the best), and the
-/// default of 100 with a rate of 0.9995 is such a start when fitness differences
-/// are fractions of a unit. Pick it so that a solution a few percent worse than
-/// the first one is accepted about half the time (`temperature ~ 0.05 * fitness
-/// / ln 2`), and a rate that cools it near the floor within the iteration
-/// budget.
+/// By default the temperatures are multiples of the objective's own scale
+/// ([`TemperatureScale::Calibrated`]): before the run, `samples` destroy/repair
+/// candidates are drawn from the initial solution and `sigma` is the mean amount
+/// by which they are worse. `initial_temperature = 1` then accepts a typical
+/// worsening with probability `1/e` whatever the unit of the cost, so the same
+/// configuration serves a fitness of 0.3 and one of 3000. (Ropke & Pisinger
+/// instead fix the start as `0.05 * initial cost / ln 2`; that needs a positive
+/// cost, which a measured scale does not.) An absolute start, set with
+/// [`with_temperature`](Self::with_temperature), is in the unit of the fitness: a
+/// candidate worse by `delta` is accepted with probability
+/// `exp(-delta / temperature)`, and a start far above the fitness differences
+/// between neighbouring solutions accepts nearly every candidate -- a random walk
+/// that only remembers the best.
 ///
 /// # References
 ///
@@ -82,13 +86,19 @@ pub struct AlnsConfig {
     /// Maximum destroy degree.
     pub max_destroy_degree: f64,
 
-    /// Initial temperature for SA acceptance.
+    /// What the temperatures are measured in (default: calibrated to the
+    /// objective). [`with_temperature`](Self::with_temperature) sets an absolute
+    /// temperature; [`with_relative_temperature`](Self::with_relative_temperature)
+    /// a calibrated one.
+    pub temperature_scale: TemperatureScale,
+
+    /// Initial temperature for SA acceptance, in units of `temperature_scale`.
     pub initial_temperature: f64,
 
     /// Cooling rate for SA acceptance (geometric), in (0, 1).
     pub cooling_rate: f64,
 
-    /// Minimum temperature (stops cooling below this).
+    /// Minimum temperature (stops cooling below this), in the same unit.
     pub min_temperature: f64,
 
     /// Random seed for reproducibility.
@@ -111,9 +121,10 @@ impl Default for AlnsConfig {
             min_weight: 0.01,
             min_destroy_degree: 0.1,
             max_destroy_degree: 0.4,
-            initial_temperature: 100.0,
+            temperature_scale: TemperatureScale::default(),
+            initial_temperature: 1.0,
             cooling_rate: 0.9995,
-            min_temperature: 0.01,
+            min_temperature: 1e-3,
             seed: None,
             time_limit_ms: None,
         }
@@ -151,7 +162,27 @@ impl AlnsConfig {
         self
     }
 
+    /// Sets the temperatures **in the unit of the fitness**
+    /// ([`TemperatureScale::Absolute`]).
     pub fn with_temperature(mut self, initial: f64, cooling_rate: f64, min: f64) -> Self {
+        self.temperature_scale = TemperatureScale::Absolute;
+        self.initial_temperature = initial;
+        self.cooling_rate = cooling_rate;
+        self.min_temperature = min;
+        self
+    }
+
+    /// Sets the temperatures as multiples of the fitness scale measured over
+    /// `samples` candidates drawn from the initial solution
+    /// ([`TemperatureScale::Calibrated`]).
+    pub fn with_relative_temperature(
+        mut self,
+        initial: f64,
+        cooling_rate: f64,
+        min: f64,
+        samples: usize,
+    ) -> Self {
+        self.temperature_scale = TemperatureScale::Calibrated { samples };
         self.initial_temperature = initial;
         self.cooling_rate = cooling_rate;
         self.min_temperature = min;
@@ -171,6 +202,7 @@ impl AlnsConfig {
 
     /// Validates the configuration.
     pub fn validate(&self) -> Result<(), ConfigError> {
+        self.temperature_scale.validate()?;
         if self.time_limit_ms == Some(0) {
             return Err(ConfigError::out_of_range(
                 "time_limit_ms",

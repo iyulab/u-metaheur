@@ -2,7 +2,8 @@
 
 use super::config::AlnsConfig;
 use super::types::{AlnsProblem, DestroyOperator, RepairOperator};
-use crate::{ConfigError, StopReason};
+use crate::temperature::cost_scale;
+use crate::{ConfigError, StopReason, TemperatureScale};
 use rand::{Rng, RngExt};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -25,6 +26,11 @@ pub struct AlnsResult<S: Clone> {
 
     /// Final temperature.
     pub final_temperature: f64,
+
+    /// The cost scale the configured temperatures were multiplied by: the
+    /// measured `sigma` of a calibrated run, `1` for an absolute one. The
+    /// temperatures in this result are already in the unit of the cost.
+    pub temperature_unit: f64,
 
     /// Why the run stopped: its iteration budget or a cancel.
     pub stop_reason: StopReason,
@@ -170,7 +176,22 @@ impl AlnsRunner {
         let mut repair_stats: Vec<OperatorStats> =
             repair_ops.iter().map(|_| OperatorStats::new()).collect();
 
-        let mut temperature = config.initial_temperature;
+        // Temperatures are configured in units of `scale` (1 when absolute):
+        // candidates drawn from the initial solution, not applied, measure it.
+        let scale = match config.temperature_scale {
+            TemperatureScale::Absolute => 1.0,
+            TemperatureScale::Calibrated { samples } => cost_scale((0..samples).map(|_| {
+                let d_idx = roulette_select(&destroy_stats, &mut rng);
+                let r_idx = roulette_select(&repair_stats, &mut rng);
+                let degree =
+                    rng.random_range(config.min_destroy_degree..=config.max_destroy_degree);
+                let destroyed = destroy_ops[d_idx].destroy(&current, degree, &mut rng);
+                let candidate = repair_ops[r_idx].repair(&destroyed, &mut rng);
+                problem.cost(&candidate) - current_cost
+            })),
+        };
+        let min_temperature = config.min_temperature * scale;
+        let mut temperature = config.initial_temperature * scale;
         let mut improvements = 0usize;
         let mut stop_reason = StopReason::IterationLimit;
         let mut iterations = config.max_iterations;
@@ -243,7 +264,7 @@ impl AlnsRunner {
             repair_stats[r_idx].record(score);
 
             // Cool down
-            temperature = (temperature * config.cooling_rate).max(config.min_temperature);
+            temperature = (temperature * config.cooling_rate).max(min_temperature);
 
             // End-of-segment weight update
             if (iteration + 1) % config.segment_length == 0 {
@@ -275,6 +296,7 @@ impl AlnsRunner {
             iterations,
             improvements,
             final_temperature: temperature,
+            temperature_unit: scale,
             stop_reason,
             destroy_weights: destroy_stats.iter().map(|s| s.weight).collect(),
             repair_weights: repair_stats.iter().map(|s| s.weight).collect(),
@@ -451,6 +473,64 @@ mod tests {
             result.best_cost
         );
         assert_eq!(result.iterations, 500);
+    }
+
+    /// The same problem with every cost multiplied by `factor`.
+    struct Scaled {
+        inner: SubsetProblem,
+        factor: f64,
+    }
+
+    impl AlnsProblem for Scaled {
+        type Solution = Vec<bool>;
+
+        fn initial_solution<R: Rng>(&self, rng: &mut R) -> Vec<bool> {
+            self.inner.initial_solution(rng)
+        }
+
+        fn cost(&self, solution: &Vec<bool>) -> f64 {
+            self.inner.cost(solution) * self.factor
+        }
+    }
+
+    /// A calibrated temperature is relative to the objective: the same
+    /// configuration on the same problem with every cost multiplied by a power
+    /// of two (exact in floating point) follows the same trajectory.
+    #[test]
+    fn a_calibrated_run_does_not_depend_on_the_unit_of_the_cost() {
+        let destroy_ops = [
+            TestDestroy::Random(RandomDestroy),
+            TestDestroy::Worst(WorstDestroy),
+        ];
+        let repair_ops = [TestRepair::Greedy(GreedyRepair)];
+        let config = AlnsConfig::default().with_max_iterations(400).with_seed(11);
+        let run = |factor: f64| {
+            let problem = Scaled {
+                inner: SubsetProblem { n: 24 },
+                factor,
+            };
+            AlnsRunner::run(&problem, &destroy_ops, &repair_ops, &config).unwrap()
+        };
+        let (small, large) = (run(1.0), run(1024.0));
+        assert_eq!(small.best, large.best);
+        assert_eq!(small.improvements, large.improvements);
+        assert_eq!(small.best_cost * 1024.0, large.best_cost);
+        assert_eq!(small.temperature_unit * 1024.0, large.temperature_unit);
+    }
+
+    /// An absolute temperature is used as configured.
+    #[test]
+    fn an_absolute_temperature_is_in_the_unit_of_the_cost() {
+        let problem = SubsetProblem { n: 12 };
+        let destroy_ops = [TestDestroy::Random(RandomDestroy)];
+        let repair_ops = [TestRepair::Greedy(GreedyRepair)];
+        let config = AlnsConfig::default()
+            .with_max_iterations(50)
+            .with_temperature(7.0, 0.99, 0.5)
+            .with_seed(3);
+        let result = AlnsRunner::run(&problem, &destroy_ops, &repair_ops, &config).unwrap();
+        assert_eq!(result.temperature_unit, 1.0);
+        assert!(result.final_temperature <= 7.0 && result.final_temperature >= 0.5);
     }
 
     /// Equal ends are a fixed degree, which the settings check accepts: the

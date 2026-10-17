@@ -1,6 +1,6 @@
 //! SA configuration and cooling schedules.
 
-use crate::ConfigError;
+use crate::{ConfigError, TemperatureScale};
 use std::ops::Bound::{Excluded, Unbounded};
 
 /// Cooling schedule for temperature reduction.
@@ -58,13 +58,21 @@ impl Default for CoolingSchedule {
 /// ```
 #[derive(Debug, Clone)]
 pub struct SaConfig {
-    /// Initial temperature, in the unit of the cost: a move worse by `delta` is
-    /// accepted with probability `exp(-delta / temperature)`. Higher values
-    /// allow more exploration; one far above the cost differences between
+    /// What the temperatures are measured in. The default calibrates them to
+    /// the objective (see [`TemperatureScale::Calibrated`]); setting an
+    /// absolute temperature with [`with_initial_temperature`](Self::with_initial_temperature)
+    /// switches to [`TemperatureScale::Absolute`].
+    pub temperature_scale: TemperatureScale,
+
+    /// Initial temperature, in units of `temperature_scale`: a move worse by
+    /// `delta` is accepted with probability `exp(-delta / temperature)`. Higher
+    /// values allow more exploration; one far above the cost differences between
     /// neighbouring solutions accepts nearly every move, which is a random walk.
+    /// Calibrated, `1` accepts a typical worsening with probability `1/e`.
     pub initial_temperature: f64,
 
-    /// Minimum temperature. The algorithm stops when T drops below this.
+    /// Minimum temperature, in the same unit. The algorithm stops when T drops
+    /// below this.
     pub min_temperature: f64,
 
     /// Cooling schedule.
@@ -89,8 +97,9 @@ pub struct SaConfig {
 impl Default for SaConfig {
     fn default() -> Self {
         Self {
-            initial_temperature: 100.0,
-            min_temperature: 1e-6,
+            temperature_scale: TemperatureScale::default(),
+            initial_temperature: 1.0,
+            min_temperature: 1e-3,
             cooling: CoolingSchedule::default(),
             iterations_per_temperature: 100,
             max_iterations: 0,
@@ -101,13 +110,29 @@ impl Default for SaConfig {
 }
 
 impl SaConfig {
+    /// Sets the initial temperature **in the unit of the cost**
+    /// ([`TemperatureScale::Absolute`]). Use
+    /// [`with_relative_temperature`](Self::with_relative_temperature) to state
+    /// it relative to the objective instead.
     pub fn with_initial_temperature(mut self, t: f64) -> Self {
+        self.temperature_scale = TemperatureScale::Absolute;
         self.initial_temperature = t;
         self
     }
 
+    /// Sets the minimum temperature, in the unit the configuration is in.
     pub fn with_min_temperature(mut self, t: f64) -> Self {
         self.min_temperature = t;
+        self
+    }
+
+    /// Sets the start and floor as multiples of the cost scale measured over
+    /// `samples` neighbours of the initial solution
+    /// ([`TemperatureScale::Calibrated`]).
+    pub fn with_relative_temperature(mut self, initial: f64, min: f64, samples: usize) -> Self {
+        self.temperature_scale = TemperatureScale::Calibrated { samples };
+        self.initial_temperature = initial;
+        self.min_temperature = min;
         self
     }
 
@@ -139,6 +164,7 @@ impl SaConfig {
 
     /// Validates the configuration.
     pub fn validate(&self) -> Result<(), ConfigError> {
+        self.temperature_scale.validate()?;
         if self.time_limit_ms == Some(0) {
             return Err(ConfigError::out_of_range(
                 "time_limit_ms",
@@ -199,8 +225,9 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = SaConfig::default();
-        assert!((config.initial_temperature - 100.0).abs() < 1e-10);
-        assert!((config.min_temperature - 1e-6).abs() < 1e-15);
+        assert!((config.initial_temperature - 1.0).abs() < 1e-10);
+        assert!((config.min_temperature - 1e-3).abs() < 1e-15);
+        assert_eq!(config.temperature_scale, TemperatureScale::default());
         assert_eq!(config.iterations_per_temperature, 100);
     }
 

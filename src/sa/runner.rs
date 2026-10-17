@@ -2,7 +2,8 @@
 
 use super::config::{CoolingSchedule, SaConfig};
 use super::types::SaProblem;
-use crate::{ConfigError, StopReason};
+use crate::temperature::cost_scale;
+use crate::{ConfigError, StopReason, TemperatureScale};
 use rand::RngExt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -22,6 +23,11 @@ pub struct SaResult<S: Clone> {
 
     /// Final temperature when the algorithm stopped.
     pub final_temperature: f64,
+
+    /// The cost scale the configured temperatures were multiplied by: the
+    /// measured `sigma` of a calibrated run, `1` for an absolute one. The
+    /// temperatures in this result are already in the unit of the cost.
+    pub temperature_unit: f64,
 
     /// Number of accepted moves (including improvements).
     pub accepted_moves: usize,
@@ -72,7 +78,16 @@ impl SaRunner {
         let mut best = current.clone();
         let mut best_cost = current_cost;
 
-        let mut temperature = config.initial_temperature;
+        // Temperatures are configured in units of `scale` (1 when absolute).
+        let scale = match config.temperature_scale {
+            TemperatureScale::Absolute => 1.0,
+            TemperatureScale::Calibrated { samples } => cost_scale(
+                (0..samples)
+                    .map(|_| problem.cost(&problem.neighbor(&current, &mut rng)) - current_cost),
+            ),
+        };
+        let min_temperature = config.min_temperature * scale;
+        let mut temperature = config.initial_temperature * scale;
         let mut total_iterations = 0usize;
         let mut accepted_moves = 0usize;
         let mut improving_moves = 0usize;
@@ -89,7 +104,7 @@ impl SaRunner {
         let mut step = 0usize; // temperature step counter
         let deadline = crate::stop::Deadline::start(config.time_limit_ms);
 
-        while temperature > config.min_temperature {
+        while temperature > min_temperature {
             if let Some(ref flag) = cancel {
                 if flag.load(Ordering::Relaxed) {
                     stop_reason = StopReason::Cancelled;
@@ -152,7 +167,7 @@ impl SaRunner {
             }
 
             // Cool down
-            temperature = cool(temperature, config, step, linear_max_steps);
+            temperature = cool(temperature, config, scale, step, linear_max_steps);
             step += 1;
         }
 
@@ -169,6 +184,7 @@ impl SaRunner {
             best_cost,
             iterations: total_iterations,
             final_temperature: temperature,
+            temperature_unit: scale,
             accepted_moves,
             improving_moves,
             stop_reason,
@@ -178,22 +194,30 @@ impl SaRunner {
 }
 
 /// Apply the cooling schedule to compute the next temperature.
-fn cool(temperature: f64, config: &SaConfig, step: usize, linear_max_steps: usize) -> f64 {
+fn cool(
+    temperature: f64,
+    config: &SaConfig,
+    scale: f64,
+    step: usize,
+    linear_max_steps: usize,
+) -> f64 {
+    let initial = config.initial_temperature * scale;
+    let min = config.min_temperature * scale;
     match config.cooling {
         CoolingSchedule::Geometric { alpha } => temperature * alpha,
 
         CoolingSchedule::Linear => {
             if linear_max_steps == 0 {
-                config.min_temperature
+                min
             } else {
-                let t = config.initial_temperature
-                    - (step + 1) as f64 * (config.initial_temperature - config.min_temperature)
-                        / linear_max_steps as f64;
-                t.max(config.min_temperature)
+                let t = initial - (step + 1) as f64 * (initial - min) / linear_max_steps as f64;
+                t.max(min)
             }
         }
 
-        CoolingSchedule::LundyMees { beta } => temperature / (1.0 + beta * temperature),
+        // `beta` has the unit of 1 / temperature, so in a calibrated run it is
+        // per `scale`.
+        CoolingSchedule::LundyMees { beta } => temperature / (1.0 + beta / scale * temperature),
     }
 }
 
@@ -453,6 +477,54 @@ mod tests {
     //
     // P(accept) = exp(-Δ/T) for Δ > 0 (uphill moves).
     // Reference: Kirkpatrick et al. (1983), Science 220(4598), eq. (1).
+
+    /// The quadratic with every cost multiplied by `factor`.
+    struct ScaledQuadratic(f64);
+
+    impl SaProblem for ScaledQuadratic {
+        type Solution = f64;
+
+        fn initial_solution<R: Rng>(&self, rng: &mut R) -> f64 {
+            QuadraticProblem.initial_solution(rng)
+        }
+
+        fn cost(&self, x: &f64) -> f64 {
+            QuadraticProblem.cost(x) * self.0
+        }
+
+        fn neighbor<R: Rng>(&self, x: &f64, rng: &mut R) -> f64 {
+            QuadraticProblem.neighbor(x, rng)
+        }
+    }
+
+    /// A calibrated temperature is relative to the objective: the same
+    /// configuration with every cost multiplied by a power of two (exact in
+    /// floating point) accepts and improves exactly the same moves.
+    #[test]
+    fn a_calibrated_run_does_not_depend_on_the_unit_of_the_cost() {
+        let config = SaConfig::default()
+            .with_iterations_per_temperature(20)
+            .with_seed(5);
+        let small = SaRunner::run(&ScaledQuadratic(1.0), &config).unwrap();
+        let large = SaRunner::run(&ScaledQuadratic(4096.0), &config).unwrap();
+        assert_eq!(small.best, large.best);
+        assert_eq!(small.accepted_moves, large.accepted_moves);
+        assert_eq!(small.improving_moves, large.improving_moves);
+        assert_eq!(small.iterations, large.iterations);
+        assert_eq!(small.temperature_unit * 4096.0, large.temperature_unit);
+    }
+
+    /// Setting an absolute start is in the unit of the cost, as before.
+    #[test]
+    fn an_absolute_temperature_is_in_the_unit_of_the_cost() {
+        let config = SaConfig::default()
+            .with_initial_temperature(50.0)
+            .with_min_temperature(1.0)
+            .with_seed(5);
+        let result = SaRunner::run(&QuadraticProblem, &config).unwrap();
+        assert_eq!(result.temperature_unit, 1.0);
+        assert!(result.final_temperature <= 1.0);
+    }
 
     #[test]
     fn test_sa_acceptance_probability_formula() {

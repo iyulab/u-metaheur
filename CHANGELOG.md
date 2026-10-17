@@ -8,11 +8,31 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Added
+
+- `TemperatureScale` (`SaConfig::temperature_scale`, `AlnsConfig::temperature_scale`):
+  what a configured temperature is measured in. `Calibrated { samples }` makes the
+  start and the floor multiples of the objective's own scale -- the mean amount by
+  which a neighbouring solution (a destroy/repair candidate, for ALNS) is worse than
+  the initial one, sampled before the run -- so `initial_temperature = 1` accepts a
+  typical worsening with probability 1/e whatever the unit of the cost.
+  `with_relative_temperature` sets it; `Absolute` is the previous behaviour.
+- `SaResult::temperature_unit` and `AlnsResult::temperature_unit`: the factor the
+  configured temperatures were multiplied by (the measured scale, or 1).
+
 ### Changed
 
-- The ALNS and SA configuration docs state that the temperature is in the unit of the
-  fitness (cost) and how to pick it: a start far above the fitness differences
-  between neighbouring solutions accepts nearly every candidate.
+- **Breaking**: the default temperature scale is `Calibrated`, with
+  `initial_temperature` 1 and `min_temperature` 1e-3 (SA and ALNS; they were 100 and
+  1e-6 / 0.01 in the unit of the cost). A default of 100 is a random walk whenever the
+  cost differences between neighbours are fractions of a unit, and one far below them
+  never leaves the first basin; a number in the unit of the cost cannot be right for
+  more than one objective. `with_initial_temperature` and `with_temperature` still set
+  an absolute temperature and are unchanged. A configuration that left the
+  temperature at its default now follows the objective -- set the absolute values to
+  keep the old behaviour.
+- The ALNS and SA configuration docs state the unit of the temperature and how the
+  scale is chosen.
 
 ## [0.13.0] - 2026-10-17
 

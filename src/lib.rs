@@ -36,6 +36,8 @@ pub mod ga;
 pub mod sa;
 pub mod stop;
 pub use stop::StopReason;
+mod temperature;
+pub use temperature::TemperatureScale;
 pub mod tabu;
 pub mod vns;
 #[cfg(feature = "wasm")]

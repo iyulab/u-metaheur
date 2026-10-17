@@ -554,8 +554,8 @@ proptest! {
         for w in result.destroy_weights.iter().chain(&result.repair_weights) {
             prop_assert!(w.is_finite() && *w >= config.min_weight - 1e-12, "weight {w} below floor {}", config.min_weight);
         }
-        prop_assert!(result.final_temperature <= config.initial_temperature + 1e-9);
-        prop_assert!(result.final_temperature >= config.min_temperature - 1e-9);
+        prop_assert!(result.final_temperature <= config.initial_temperature * result.temperature_unit + 1e-9);
+        prop_assert!(result.final_temperature >= config.min_temperature * result.temperature_unit - 1e-9);
 
         prop_assert_eq!(&again.cost_history, &result.cost_history, "ALNS: same seed, different run");
         prop_assert_eq!(&again.best, &result.best);
