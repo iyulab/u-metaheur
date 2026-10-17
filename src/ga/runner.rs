@@ -96,6 +96,9 @@ impl GaRunner {
         cancel: Option<Arc<AtomicBool>>,
     ) -> Result<GaResult<P::Individual>, ConfigError> {
         config.validate()?;
+        // The budget covers the whole run: building and scoring the first
+        // population is most of a short run on a large problem.
+        let deadline = crate::stop::Deadline::start(config.time_limit_ms);
 
         let mut rng = match config.seed {
             Some(seed) => create_rng(seed),
@@ -110,8 +113,10 @@ impl GaRunner {
             population.push(problem.create_individual(&mut rng));
         }
 
-        // 2. Evaluate initial population
-        evaluate_population(problem, &mut population, config.parallel);
+        // 2. Evaluate initial population. A budget that runs out part way
+        // keeps the individuals scored so far (always at least one).
+        let scored = evaluate_population(problem, &mut population, config.parallel, &deadline);
+        population.truncate(scored);
 
         // 3. Track best
         let mut best = find_best(&population).clone();
@@ -121,7 +126,6 @@ impl GaRunner {
         let mut stagnation_counter = 0usize;
         let mut stop_reason = StopReason::IterationLimit;
         let mut generation_stats = Vec::new();
-        let deadline = crate::stop::Deadline::start(config.time_limit_ms);
 
         // Record initial population stats
         generation_stats.push(compute_generation_stats(&population, 0));
@@ -154,6 +158,12 @@ impl GaRunner {
 
             // Generate offspring
             while next_gen.len() < config.population_size {
+                // Breeding is where an expensive `mutate` (a local search, say)
+                // spends the generation: stop at the budget with whatever
+                // offspring there are, so long as the generation has anyone.
+                if deadline.passed() && !next_gen.is_empty() {
+                    break;
+                }
                 // Selection
                 let p1_idx = config.selection.select(&population, &mut rng);
                 let p2_idx = config.selection.select(&population, &mut rng);
@@ -180,7 +190,13 @@ impl GaRunner {
             }
 
             // Evaluate new individuals (skip elites, they're already evaluated)
-            evaluate_population(problem, &mut next_gen[elite_count..], config.parallel);
+            let scored = evaluate_population(
+                problem,
+                &mut next_gen[elite_count..],
+                config.parallel,
+                &deadline,
+            );
+            next_gen.truncate(elite_count + scored);
 
             population = next_gen;
 
@@ -242,25 +258,51 @@ impl GaRunner {
     }
 }
 
-/// Evaluate all individuals in the population.
+/// Evaluate the individuals in the population, in batches, until the budget
+/// runs out. Returns how many (a prefix, at least the first batch) were scored;
+/// the caller drops the rest.
 fn evaluate_population<P: GaProblem>(
     problem: &P,
     population: &mut [P::Individual],
     parallel: bool,
-) {
+    deadline: &crate::stop::Deadline,
+) -> usize {
     #[cfg(feature = "parallel")]
-    if parallel {
-        population.par_iter_mut().for_each(|ind| {
+    let batch = if parallel {
+        (rayon::current_num_threads() * 2).max(1)
+    } else {
+        1
+    };
+    #[cfg(not(feature = "parallel"))]
+    let batch = {
+        let _ = parallel;
+        1
+    };
+    let mut scored = 0;
+    for chunk in population.chunks_mut(batch) {
+        #[cfg(feature = "parallel")]
+        if parallel {
+            chunk.par_iter_mut().for_each(|ind| {
+                let f = problem.evaluate(ind);
+                ind.set_fitness(f);
+            });
+        } else {
+            for ind in chunk.iter_mut() {
+                let f = problem.evaluate(ind);
+                ind.set_fitness(f);
+            }
+        }
+        #[cfg(not(feature = "parallel"))]
+        for ind in chunk.iter_mut() {
             let f = problem.evaluate(ind);
             ind.set_fitness(f);
-        });
-        return;
+        }
+        scored += chunk.len();
+        if deadline.passed() {
+            break;
+        }
     }
-    let _ = parallel;
-    for ind in population.iter_mut() {
-        let f = problem.evaluate(ind);
-        ind.set_fitness(f);
-    }
+    scored
 }
 
 /// Find the individual with the best (lowest) fitness.
@@ -719,6 +761,88 @@ mod tests {
             "should have stopped well before max_generations, got {}",
             result.generations
         );
+    }
+
+    /// OneMax whose evaluation and mutation can be slow, like a large routing
+    /// instance's split and local search.
+    struct SlowOneMax {
+        inner: OneMaxProblem,
+        evaluate_ms: u64,
+        mutate_ms: u64,
+    }
+
+    impl GaProblem for SlowOneMax {
+        type Individual = BitString;
+
+        fn create_individual<R: Rng>(&self, rng: &mut R) -> BitString {
+            self.inner.create_individual(rng)
+        }
+
+        fn evaluate(&self, ind: &BitString) -> f64 {
+            std::thread::sleep(std::time::Duration::from_millis(self.evaluate_ms));
+            self.inner.evaluate(ind)
+        }
+
+        fn crossover<R: Rng>(&self, p1: &BitString, p2: &BitString, rng: &mut R) -> Vec<BitString> {
+            self.inner.crossover(p1, p2, rng)
+        }
+
+        fn mutate<R: Rng>(&self, ind: &mut BitString, rng: &mut R) {
+            std::thread::sleep(std::time::Duration::from_millis(self.mutate_ms));
+            self.inner.mutate(ind, rng)
+        }
+    }
+
+    /// The budget covers scoring a population, not only the gaps between
+    /// generations: 200 individuals at 10 ms are 2 s of work per generation,
+    /// and a 100 ms budget used to run the first one out whole.
+    #[test]
+    fn test_time_limit_cuts_a_population_short() {
+        let problem = SlowOneMax {
+            inner: OneMaxProblem { n: 20 },
+            evaluate_ms: 10,
+            mutate_ms: 0,
+        };
+        let config = GaConfig::default()
+            .with_population_size(200)
+            .with_max_generations(100)
+            .with_stagnation_limit(0)
+            .with_time_limit_ms(100)
+            .with_seed(42)
+            .with_parallel(false);
+
+        let start = std::time::Instant::now();
+        let result = GaRunner::run(&problem, &config).unwrap();
+        let elapsed = start.elapsed();
+
+        assert_eq!(result.stop_reason, StopReason::TimeLimit);
+        assert!(elapsed.as_millis() < 500, "{elapsed:?}");
+    }
+
+    /// ... and breeding: an expensive `mutate` (a local search) run on every
+    /// child of a 200-strong generation is 2 s of work the budget must cut.
+    #[test]
+    fn test_time_limit_cuts_breeding_short() {
+        let problem = SlowOneMax {
+            inner: OneMaxProblem { n: 20 },
+            evaluate_ms: 0,
+            mutate_ms: 10,
+        };
+        let config = GaConfig::default()
+            .with_population_size(200)
+            .with_max_generations(100)
+            .with_mutation_rate(1.0)
+            .with_stagnation_limit(0)
+            .with_time_limit_ms(100)
+            .with_seed(42)
+            .with_parallel(false);
+
+        let start = std::time::Instant::now();
+        let result = GaRunner::run(&problem, &config).unwrap();
+        let elapsed = start.elapsed();
+
+        assert_eq!(result.stop_reason, StopReason::TimeLimit);
+        assert!(elapsed.as_millis() < 500, "{elapsed:?}");
     }
 
     #[test]

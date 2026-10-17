@@ -8,6 +8,17 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Fixed
+
+- `GaConfig::time_limit_ms` covers the whole run. The clock used to start after
+  the first population was scored, and scoring a population never looked at it,
+  so on a problem whose evaluation is expensive a short limit ran whole
+  generations over (a 1.5 s limit ended near 2.7 s on a 300-customer routing
+  instance). The clock now starts with the run, and both scoring a population
+  and breeding one stop at the budget -- an expensive `mutate` (a local search)
+  runs on every child -- keeping the individuals produced so far (always at
+  least one).
+
 ### Changed
 
 - The WebAssembly `run_ga` and `run_sa` run this crate's `GaRunner` and
