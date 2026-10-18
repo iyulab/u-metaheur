@@ -1,0 +1,165 @@
+{
+  "$schema": "scripts/engine-card/engine-card.schema.json",
+  "card_version": 1,
+  "engine": {
+    "id": "u-metaheur",
+    "summary": "Metaheuristic search (genetic algorithm, simulated annealing), exposed over WebAssembly as solvers of a travelling-salesman tour through 2D points.",
+    "version": "0.14.0",
+    "license": "MIT",
+    "repository": "https://github.com/iyulab/u-metaheur"
+  },
+  "surfaces": [
+    {
+      "kind": "crate",
+      "name": "u-metaheur",
+      "package_version": "0.14.0",
+      "engine_version": "0.14.0",
+      "note": "The crate is a framework: GA, BRKGA, SA, ALNS, CP, tabu and VNS runners over a problem the caller implements as a trait; the two WebAssembly operations are its runners applied to one fixed problem.",
+      "error_shape": "Err(ConfigError) from a runner given settings it cannot run."
+    },
+    {
+      "kind": "npm",
+      "name": "@iyulab/u-metaheur",
+      "package_version": "0.14.0",
+      "engine_version": "0.14.0",
+      "wasm": true,
+      "note": "Objects in and out, typed in the .d.ts (GaConfig, GaResult, SaConfig, SaResult). Bundler and Node targets; no bundler-less browser build.",
+      "error_shape": "A thrown Error whose code property is the code, with the fields (parameter, index, min, max, got, ...) as its other properties."
+    }
+  ],
+  "errors": {
+    "shape": "A refusal carries a stable snake_case 'code' and the fields listed for that code; only the WebAssembly surface refuses with codes.",
+    "source": {
+      "catalog": "code_catalog in src/wasm.rs, built from the Code table the refusals are made from; published as codes() in WebAssembly. What each code means is tabled in README.md, which a test holds equal to the catalog.",
+      "test": "src/wasm.rs::code_catalog_tests::the_readme_documents_every_code_and_no_other"
+    }
+  },
+  "operations": [
+    {
+      "id": "run_ga",
+      "summary": "A short closed tour through 2D points by a genetic algorithm: order crossover, swap mutation, tournament selection, a nearest-neighbour tour in the first population; returns the best tour, its length, the generations run and why it stopped.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/run_ga.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/run_ga.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": false,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "deadline",
+        "randomness": "unseeded",
+        "note": "A run draws from config.seed when it is given and from fresh entropy when it is not; config.time_limit_ms ends it at a wall-clock deadline."
+      },
+      "determinism": {
+        "kind": "nondeterministic",
+        "note": "The worst case, a run without config.seed. stop_reason says which limit ended a run.",
+        "cases": [
+          {
+            "when": "config.seed given and no config.time_limit_ms: the run ends on its own generation budget",
+            "kind": "seeded",
+            "randomness": "seeded",
+            "clock": "none",
+            "test": "src/wasm.rs::tests::the_ga_is_reproducible_from_a_seed"
+          },
+          {
+            "when": "config.seed given, with config.time_limit_ms",
+            "kind": "time_bounded",
+            "randomness": "seeded",
+            "clock": "deadline",
+            "note": "How far the search gets before the deadline depends on machine speed; with the same seed it visits the same candidates in the same order."
+          }
+        ]
+      },
+      "output_provenance": {
+        "fields": [
+          "stop_reason",
+          "generations_run"
+        ],
+        "note": "Whether the run used its whole generation budget or stopped at the deadline."
+      },
+      "validation": {
+        "status": "none",
+        "limits": [
+          "Tour quality has not been compared against optimal tours of standard instances (TSPLIB)."
+        ]
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(generations · population_size · n) for n points."
+      }
+    },
+    {
+      "id": "run_sa",
+      "summary": "A short closed tour through 2D points by simulated annealing from the nearest-neighbour tour: 2-opt moves, geometric cooling (T multiplied by cooling_rate per move); returns the best tour, its length, the iterations run and why it stopped.",
+      "input": {
+        "schema": "schemas/wasm.schema.json#/$defs/run_sa.input",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "output": {
+        "schema": "schemas/wasm.schema.json#/$defs/run_sa.output",
+        "freshness_test": "src/wasm.rs::engine_card_tests::the_schemas_are_generated_from_the_binding_types"
+      },
+      "contract_test": "src/wasm.rs::engine_card_tests::every_export_is_a_card_operation_with_its_arguments",
+      "hints": {
+        "read_only": true,
+        "destructive": false,
+        "idempotent": false,
+        "open_world": false
+      },
+      "effects": {
+        "filesystem": "none",
+        "network": "none",
+        "clock": "deadline",
+        "randomness": "unseeded",
+        "note": "A run draws from config.seed when it is given and from fresh entropy when it is not; config.time_limit_ms ends it at a wall-clock deadline."
+      },
+      "determinism": {
+        "kind": "nondeterministic",
+        "note": "The worst case, a run without config.seed. stop_reason says which limit ended a run.",
+        "cases": [
+          {
+            "when": "config.seed given and no config.time_limit_ms: the run ends on its own iteration budget or once the temperature has cooled to nothing",
+            "kind": "seeded",
+            "randomness": "seeded",
+            "clock": "none",
+            "test": "src/wasm.rs::tests::anneal_reports_its_tour_and_a_seed_reproduces_it"
+          },
+          {
+            "when": "config.seed given, with config.time_limit_ms",
+            "kind": "time_bounded",
+            "randomness": "seeded",
+            "clock": "deadline",
+            "note": "How far the search gets before the deadline depends on machine speed; with the same seed it visits the same candidates in the same order."
+          }
+        ]
+      },
+      "output_provenance": {
+        "fields": [
+          "stop_reason",
+          "iterations_run"
+        ],
+        "note": "Whether the run used its iterations, cooled to nothing first, or stopped at the deadline."
+      },
+      "validation": {
+        "status": "none",
+        "limits": [
+          "Tour quality has not been compared against optimal tours of standard instances (TSPLIB)."
+        ]
+      },
+      "performance": {
+        "status": "none",
+        "complexity": "O(iterations · n) for n points : each 2-opt move copies and re-measures the tour."
+      }
+    }
+  ]
+}

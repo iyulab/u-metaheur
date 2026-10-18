@@ -1,0 +1,222 @@
+{
+  "$defs": {
+    "GaConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "generations": {
+          "default": 200,
+          "description": "At least 1.",
+          "format": "int128",
+          "type": "integer"
+        },
+        "mutation_rate": {
+          "default": 0.05,
+          "format": "double",
+          "type": "number"
+        },
+        "nodes": {
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "population_size": {
+          "default": 100,
+          "description": "At least 2 (`run_ga` checks it; see [`Whole`] for why it is signed).",
+          "format": "int128",
+          "type": "integer"
+        },
+        "seed": {
+          "default": null,
+          "description": "RNG seed, a whole number from 0 to 2^64 - 1: the same request and seed\ngive the same tour when the run ends on its own budget.",
+          "format": "int128",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "time_limit_ms": {
+          "default": null,
+          "description": "Wall-clock budget in milliseconds, at least 1: the run returns the best\ntour found by then (`stop_reason: \"time_limit\"`).",
+          "format": "int128",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "nodes"
+      ],
+      "type": "object"
+    },
+    "GaResult": {
+      "properties": {
+        "best_distance": {
+          "format": "double",
+          "type": "number"
+        },
+        "best_tour": {
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "generations_run": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stop_reason": {
+          "description": "Why the run stopped: `\"iteration_limit\"` (it ran its `generations`) or\n`\"time_limit\"`.",
+          "enum": [
+            "iteration_limit",
+            "time_limit"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "best_distance",
+        "best_tour",
+        "generations_run",
+        "stop_reason"
+      ],
+      "type": "object"
+    },
+    "SaConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "cooling_rate": {
+          "default": 0.995,
+          "format": "double",
+          "type": "number"
+        },
+        "initial_temp": {
+          "default": 1000.0,
+          "format": "double",
+          "type": "number"
+        },
+        "iterations": {
+          "default": 5000,
+          "description": "At least 1 (`run_sa` checks it; see [`Whole`] for why it is signed).",
+          "format": "int128",
+          "type": "integer"
+        },
+        "nodes": {
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "seed": {
+          "default": null,
+          "description": "RNG seed, a whole number from 0 to 2^64 - 1 (as `run_ga`'s).",
+          "format": "int128",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "time_limit_ms": {
+          "default": null,
+          "description": "Wall-clock budget in milliseconds, at least 1 (as `run_ga`'s).",
+          "format": "int128",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "nodes"
+      ],
+      "type": "object"
+    },
+    "SaResult": {
+      "properties": {
+        "best_distance": {
+          "format": "double",
+          "type": "number"
+        },
+        "best_tour": {
+          "items": {
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "iterations_run": {
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stop_reason": {
+          "description": "Why the run stopped: `\"iteration_limit\"` (it ran its `iterations`),\n`\"completed\"` (the temperature cooled to nothing first) or\n`\"time_limit\"`.",
+          "enum": [
+            "iteration_limit",
+            "completed",
+            "time_limit"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "best_distance",
+        "best_tour",
+        "iterations_run",
+        "stop_reason"
+      ],
+      "type": "object"
+    },
+    "run_ga.input": {
+      "additionalProperties": false,
+      "description": "The arguments of run_ga(config), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "config": {
+          "$ref": "#/$defs/GaConfig"
+        }
+      },
+      "required": [
+        "config"
+      ],
+      "type": "object"
+    },
+    "run_ga.output": {
+      "$ref": "#/$defs/GaResult"
+    },
+    "run_sa.input": {
+      "additionalProperties": false,
+      "description": "The arguments of run_sa(config), by name; the WebAssembly function takes them in that order.",
+      "properties": {
+        "config": {
+          "$ref": "#/$defs/SaConfig"
+        }
+      },
+      "required": [
+        "config"
+      ],
+      "type": "object"
+    },
+    "run_sa.output": {
+      "$ref": "#/$defs/SaResult"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "u-metaheur WebAssembly operations"
+}

@@ -749,6 +749,7 @@ fn runner_refused(e: crate::ConfigError) -> JsValue {
 
 #[derive(Deserialize, tsify::Tsify)]
 #[serde(deny_unknown_fields)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 struct GaConfig {
     nodes: Vec<[f64; 2]>,
     /// At least 2 (`run_ga` checks it; see [`Whole`] for why it is signed).
@@ -785,6 +786,7 @@ fn default_mutation_rate() -> f64 {
 }
 
 #[derive(Serialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 struct GaResult {
     best_distance: f64,
     best_tour: Vec<usize>,
@@ -792,6 +794,7 @@ struct GaResult {
     /// Why the run stopped: `"iteration_limit"` (it ran its `generations`) or
     /// `"time_limit"`.
     #[tsify(type = "\"iteration_limit\" | \"time_limit\"")]
+    #[cfg_attr(test, schemars(extend("enum" = ["iteration_limit", "time_limit"])))]
     stop_reason: String,
 }
 
@@ -860,6 +863,7 @@ pub fn run_ga(
 
 #[derive(Deserialize, tsify::Tsify)]
 #[serde(deny_unknown_fields)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 struct SaConfig {
     nodes: Vec<[f64; 2]>,
     #[serde(default = "default_temp")]
@@ -893,6 +897,7 @@ fn default_iterations() -> i128 {
 }
 
 #[derive(Serialize, tsify::Tsify)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 struct SaResult {
     best_distance: f64,
     best_tour: Vec<usize>,
@@ -901,6 +906,7 @@ struct SaResult {
     /// `"completed"` (the temperature cooled to nothing first) or
     /// `"time_limit"`.
     #[tsify(type = "\"iteration_limit\" | \"completed\" | \"time_limit\"")]
+    #[cfg_attr(test, schemars(extend("enum" = ["iteration_limit", "completed", "time_limit"])))]
     stop_reason: String,
 }
 
@@ -1336,5 +1342,60 @@ mod code_catalog_tests {
             .chain(catalog.violations.iter().map(|v| v.code.clone()))
             .collect();
         assert_eq!(documented, published);
+    }
+}
+
+#[cfg(test)]
+mod engine_card_tests {
+    //! The engine card's operations are this binding's exports, and the
+    //! schemas it points at are generated from the types they read and return.
+
+    use super::{GaConfig, GaResult, SaConfig, SaResult};
+    use crate::engine_card::{arg, Schemas};
+
+    fn schemas() -> Schemas {
+        let s = Schemas::new();
+        s.op(
+            "run_ga",
+            vec![arg("config", s.of::<GaConfig>())],
+            s.of::<GaResult>(),
+        );
+        s.op(
+            "run_sa",
+            vec![arg("config", s.of::<SaConfig>())],
+            s.of::<SaResult>(),
+        );
+        s
+    }
+
+    #[test]
+    fn the_schemas_are_generated_from_the_binding_types() {
+        schemas().check("u-metaheur WebAssembly operations");
+    }
+
+    #[test]
+    fn every_export_is_a_card_operation_with_its_arguments() {
+        let s = schemas();
+        s.check_exports(include_str!("wasm.rs"));
+        s.check_card();
+    }
+
+    /// Where the crate reads a clock or draws unseeded randomness: the
+    /// runners' deadline and the draw of a seed when none is given. The card
+    /// declares both on `run_ga` and `run_sa`.
+    #[test]
+    fn the_clock_and_unseeded_randomness_are_where_the_card_says() {
+        let found: Vec<(String, &str)> = crate::engine_card::clock_and_entropy_uses();
+        let expected = [
+            ("src/alns/runner.rs", "rand::random"),
+            ("src/brkga/runner.rs", "rand::random"),
+            ("src/cp/solver.rs", "Instant::now"),
+            ("src/ga/runner.rs", "rand::random"),
+            ("src/sa/runner.rs", "rand::random"),
+            ("src/stop.rs", "Instant::now"),
+        ];
+        let expected: Vec<(String, &str)> =
+            expected.iter().map(|(f, c)| (f.to_string(), *c)).collect();
+        assert_eq!(found, expected);
     }
 }
