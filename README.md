@@ -143,7 +143,10 @@ console.log(run_ga({ nodes, population_size: 30, generations: 50, seed: 7 }).bes
 ```
 
 `run_ga` also takes `mutation_rate`; `run_sa` takes `initial_temp` and
-`cooling_rate`. Both take `seed` (a whole number from 0 to 2^64 − 1 — a run that
+`cooling_rate`. Without `initial_temp` the annealing starts at a twentieth of the
+typical worsening of a 2-opt move (measured before the run), so the same cities
+in other coordinates anneal the same way; give `initial_temp` for an absolute
+temperature in the unit of the tour length. Both take `seed` (a whole number from 0 to 2^64 − 1 — a run that
 ends on its own budget is reproduced exactly) and `time_limit_ms` (at least 1 —
 the run returns the best tour found by then). `stop_reason` is
 `"iteration_limit"` when the run spent its `generations` / `iterations`,

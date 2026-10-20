@@ -101,9 +101,13 @@
           "type": "number"
         },
         "initial_temp": {
-          "default": 1000.0,
+          "default": null,
+          "description": "Starting temperature in the unit of the tour length, `> 0`. Left out,\nthe temperature follows the tour lengths (see `run_sa`).",
           "format": "double",
-          "type": "number"
+          "type": [
+            "number",
+            "null"
+          ]
         },
         "iterations": {
           "default": 5000,

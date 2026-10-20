@@ -88,9 +88,19 @@
         "note": "Whether the run used its whole generation budget or stopped at the deadline."
       },
       "validation": {
-        "status": "none",
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The answer is a permutation of the nodes and its reported length is the closed Euclidean length of that tour; on six to eight nodes no tour is shorter than the best of all enumerated tours, and the search returns a tour of that length.",
+            "reference_kind": "literature",
+            "reference": "brute-force enumeration of all tours (the optimum by definition)",
+            "method": "four seeded maps at coordinate scales 1e-3 to 1e6, enumerating every tour",
+            "tolerance": "1e-12 (lower bound); 1e-9 relative (optimum reached)",
+            "test": "src/wasm.rs::solver_oracle_tests::small_instances_are_solved_to_the_optimum"
+          }
+        ],
         "limits": [
-          "Tour quality has not been compared against optimal tours of standard instances (TSPLIB)."
+          "Optimality is only checked where it can be enumerated (up to eight nodes); tour quality has not been compared against optimal tours of standard instances (TSPLIB)."
         ]
       },
       "performance": {
@@ -151,9 +161,27 @@
         "note": "Whether the run used its iterations, cooled to nothing first, or stopped at the deadline."
       },
       "validation": {
-        "status": "none",
+        "status": "partial",
+        "checks": [
+          {
+            "claim": "The answer is a permutation of the nodes and its reported length is the closed Euclidean length of that tour; on six to eight nodes no tour is shorter than the best of all enumerated tours, and the search returns a tour of that length.",
+            "reference_kind": "literature",
+            "reference": "brute-force enumeration of all tours (the optimum by definition)",
+            "method": "four seeded maps at coordinate scales 1e-3 to 1e6, enumerating every tour",
+            "tolerance": "1e-12 (lower bound); 1e-9 relative (optimum reached)",
+            "test": "src/wasm.rs::solver_oracle_tests::small_instances_are_solved_to_the_optimum"
+          },
+          {
+            "claim": "With no initial_temp, the annealing does not depend on the unit of the coordinates: the mean tour length over eight seeded 40-node maps, per unit of scale, agrees within 4 % from scale 1e-4 to 1e6.",
+            "reference_kind": "literature",
+            "reference": "a tour problem is unchanged by a change of unit (Johnson et al. 1989: the start is chosen by acceptance ratio, not by an absolute number)",
+            "method": "the same eight maps multiplied by six scales",
+            "tolerance": "4 % of the unit-scale mean",
+            "test": "src/wasm.rs::solver_oracle_tests::default_annealing_does_not_depend_on_the_unit_of_the_coordinates"
+          }
+        ],
         "limits": [
-          "Tour quality has not been compared against optimal tours of standard instances (TSPLIB)."
+          "Optimality is only checked where it can be enumerated (up to eight nodes); tour quality has not been compared against optimal tours of standard instances (TSPLIB)."
         ]
       },
       "performance": {

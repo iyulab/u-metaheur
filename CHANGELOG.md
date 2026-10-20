@@ -8,6 +8,18 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Changed
+
+- WebAssembly `run_sa`: with no `initial_temp` the start is calibrated to the tour
+  lengths (a twentieth of the typical worsening of a 2-opt move from the
+  nearest-neighbour tour, measured before the run) instead of an absolute 1000. An
+  absolute start is a random walk when the coordinates are small and a plain descent
+  when they are large, so the same cities returned tours up to 9 % longer depending
+  on the unit of the coordinates. `initial_temp` is now optional (`number | null` in
+  the `.d.ts`); a value still sets an absolute temperature, as before.
+- `run_ga` and `run_sa` run through `solve_ga` / `solve_sa`, which return the wire
+  error type, so the tests drive the same path as the exports.
+
 ## [0.14.0] - 2026-10-18
 
 Depends on u-numflow 0.14.

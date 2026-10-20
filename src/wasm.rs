@@ -22,7 +22,6 @@
 //!
 //! const saResult = run_sa({
 //!   nodes: [[0, 0], [1, 2], [3, 1]],
-//!   initial_temp: 1000.0,
 //!   cooling_rate: 0.995,
 //!   iterations: 5000,
 //! });
@@ -533,15 +532,12 @@ fn check_sa(config: &SaConfig) -> Result<usize, WireError> {
     if config.nodes.len() < 2 {
         return Err(WireError::too_few_nodes(config.nodes.len()));
     }
-    if config.initial_temp <= 0.0 {
+    if let Some(initial_temp) = config.initial_temp.filter(|t| *t <= 0.0) {
         return Err(WireError::out_of_range(
             "initial_temp",
             (Excluded(0.0), Unbounded),
-            config.initial_temp,
-            format!(
-                "initial_temp must be positive (> 0), got {}",
-                config.initial_temp
-            ),
+            initial_temp,
+            format!("initial_temp must be positive (> 0), got {initial_temp}"),
         ));
     }
     if config.cooling_rate <= 0.0 || config.cooling_rate >= 1.0 {
@@ -735,12 +731,12 @@ fn time_limit(value: Option<i128>) -> Result<Option<u64>, WireError> {
 
 /// The runner refusing settings this binding already checked is the
 /// package's fault, not the caller's.
-fn runner_refused(e: crate::ConfigError) -> JsValue {
-    js_err(WireError::new(
+fn runner_refused(e: crate::ConfigError) -> WireError {
+    WireError::new(
         Code::Internal,
         format!("internal: the runner refused checked settings: {e}"),
         json!({}),
-    ))
+    )
 }
 
 // ============================================================================
@@ -819,12 +815,19 @@ pub fn run_ga(
     #[wasm_bindgen(unchecked_param_type = "GaConfig")] config: JsValue,
 ) -> Result<JsValue, JsValue> {
     let config: GaConfig = from_js(config, "config")?;
+    to_js(&solve_ga(config).map_err(js_err)?)
+}
+
+/// `run_ga` without the JS boundary: a checked request in, the tour out. Every
+/// refusal is a [`WireError`], so native tests drive the same path the export
+/// does.
+fn solve_ga(config: GaConfig) -> Result<GaResult, WireError> {
     let GaCounts {
         population_size,
         generations,
-    } = check_ga(&config).map_err(js_err)?;
-    let seed = seed(config.seed).map_err(js_err)?;
-    let time_limit = time_limit(config.time_limit_ms).map_err(js_err)?;
+    } = check_ga(&config)?;
+    let seed = seed(config.seed)?;
+    let time_limit = time_limit(config.time_limit_ms)?;
 
     // Every child comes from order crossover, the best tenth (at least one)
     // is carried over, and the run goes the generations it is given.
@@ -849,7 +852,7 @@ pub fn run_ga(
     };
     let result = crate::ga::GaRunner::run(&problem, &runner_config).map_err(runner_refused)?;
 
-    to_js(&GaResult {
+    Ok(GaResult {
         best_distance: result.best_fitness,
         best_tour: result.best.order,
         generations_run: result.generations,
@@ -866,9 +869,11 @@ pub fn run_ga(
 #[cfg_attr(test, derive(schemars::JsonSchema))]
 struct SaConfig {
     nodes: Vec<[f64; 2]>,
-    #[serde(default = "default_temp")]
-    #[tsify(optional)]
-    initial_temp: f64,
+    /// Starting temperature in the unit of the tour length, `> 0`. Left out,
+    /// the temperature follows the tour lengths (see `run_sa`).
+    #[serde(default)]
+    #[tsify(optional, type = "number | null")]
+    initial_temp: Option<f64>,
     #[serde(default = "default_cooling")]
     #[tsify(optional)]
     cooling_rate: f64,
@@ -886,9 +891,6 @@ struct SaConfig {
     time_limit_ms: Option<i128>,
 }
 
-fn default_temp() -> f64 {
-    1000.0
-}
 fn default_cooling() -> f64 {
     0.995
 }
@@ -917,7 +919,10 @@ struct SaResult {
 /// # Arguments
 /// `config` — native JS object with fields:
 /// - `nodes`: `[[x, y], ...]` (required, at least 2)
-/// - `initial_temp`: float (default 1000.0, > 0)
+/// - `initial_temp`: float > 0 (optional) -- an absolute temperature, in the
+///   unit of the tour length. Left out, the start is the typical worsening of
+///   a 2-opt move from the nearest-neighbour tour, measured before the run, so
+///   the same tour in other coordinates anneals the same way
 /// - `cooling_rate`: float in (0, 1) (default 0.995)
 /// - `iterations`: integer (default 5000, at least 1)
 /// - `seed`, `time_limit_ms`: as `run_ga`'s
@@ -930,37 +935,53 @@ pub fn run_sa(
     #[wasm_bindgen(unchecked_param_type = "SaConfig")] config: JsValue,
 ) -> Result<JsValue, JsValue> {
     let config: SaConfig = from_js(config, "config")?;
-    let iterations = check_sa(&config).map_err(js_err)?;
-    let seed = seed(config.seed).map_err(js_err)?;
-    let time_limit = time_limit(config.time_limit_ms).map_err(js_err)?;
-    to_js(&anneal(
+    to_js(&solve_sa(config).map_err(js_err)?)
+}
+
+/// `run_sa` without the JS boundary (see [`solve_ga`]).
+fn solve_sa(config: SaConfig) -> Result<SaResult, WireError> {
+    let iterations = check_sa(&config)?;
+    let seed = seed(config.seed)?;
+    let time_limit = time_limit(config.time_limit_ms)?;
+    anneal(
         config.nodes,
         config.initial_temp,
         config.cooling_rate,
         iterations,
         seed,
         time_limit,
-    )?)
+    )
 }
 
 /// The crate's SA runner over 2-opt moves from the nearest-neighbour tour,
 /// cooling geometrically once per move.
 fn anneal(
     nodes: Vec<[f64; 2]>,
-    initial_temp: f64,
+    initial_temp: Option<f64>,
     cooling_rate: f64,
     iterations: usize,
     seed: Option<u64>,
     time_limit: Option<u64>,
-) -> Result<SaResult, JsValue> {
-    let mut runner_config = crate::sa::SaConfig::default()
-        .with_initial_temperature(initial_temp)
-        .with_min_temperature(f64::MIN_POSITIVE.min(initial_temp / 2.0))
-        .with_cooling(crate::sa::CoolingSchedule::Geometric {
-            alpha: cooling_rate,
-        })
-        .with_iterations_per_temperature(1)
-        .with_max_iterations(iterations);
+) -> Result<SaResult, WireError> {
+    let mut runner_config = match initial_temp {
+        Some(t) => crate::sa::SaConfig::default()
+            .with_initial_temperature(t)
+            .with_min_temperature(f64::MIN_POSITIVE.min(t / 2.0)),
+        // Twentieth of the typical worsening of a 2-opt move: on random
+        // instances of 40 and 100 nodes, 5000 moves from the nearest-neighbour
+        // tour end shortest between 0.03 and 0.1 of it (1 is 6-10 % longer).
+        // The floor is far below anything `iterations` cools to.
+        None => crate::sa::SaConfig::default().with_relative_temperature(
+            0.05,
+            1e-30,
+            crate::TemperatureScale::DEFAULT_SAMPLES,
+        ),
+    }
+    .with_cooling(crate::sa::CoolingSchedule::Geometric {
+        alpha: cooling_rate,
+    })
+    .with_iterations_per_temperature(1)
+    .with_max_iterations(iterations);
     if let Some(seed) = seed {
         runner_config = runner_config.with_seed(seed);
     }
@@ -1032,7 +1053,7 @@ mod tests {
             })
         );
         let err = check_sa(&SaConfig {
-            initial_temp: 0.0,
+            initial_temp: Some(0.0),
             ..sa
         })
         .expect_err("a temperature of zero");
@@ -1057,13 +1078,13 @@ mod tests {
     fn anneal_reports_its_tour_and_a_seed_reproduces_it() {
         let nodes = vec![[0.0, 0.0], [1.0, 1.0], [2.0, 0.0], [1.0, -1.0], [3.0, 2.0]];
         for seed in 0..50 {
-            let r = anneal(nodes.clone(), 1000.0, 0.995, 500, Some(seed), None)
+            let r = anneal(nodes.clone(), Some(1000.0), 0.995, 500, Some(seed), None)
                 .unwrap_or_else(|_| panic!("seed {seed}"));
             let actual = tour_distance(&r.best_tour, &nodes);
             assert!((r.best_distance - actual).abs() < 1e-9, "seed {seed}");
             assert_eq!(r.iterations_run, 500);
             assert_eq!(r.stop_reason, "iteration_limit");
-            let again = anneal(nodes.clone(), 1000.0, 0.995, 500, Some(seed), None)
+            let again = anneal(nodes.clone(), Some(1000.0), 0.995, 500, Some(seed), None)
                 .unwrap_or_else(|_| panic!("seed {seed}"));
             assert_eq!(again.best_tour, r.best_tour);
         }
@@ -1072,7 +1093,7 @@ mod tests {
     #[test]
     fn anneal_on_two_nodes_keeps_the_single_tour_length() {
         let nodes = vec![[0.0, 0.0], [5.0, 0.0]];
-        let r = anneal(nodes.clone(), 1000.0, 0.995, 100, Some(7), None).expect("runs");
+        let r = anneal(nodes.clone(), Some(1000.0), 0.995, 100, Some(7), None).expect("runs");
         assert!((r.best_distance - 10.0).abs() < 1e-12);
         assert!((tour_distance(&r.best_tour, &nodes) - 10.0).abs() < 1e-12);
     }
@@ -1397,5 +1418,170 @@ mod engine_card_tests {
         let expected: Vec<(String, &str)> =
             expected.iter().map(|(f, c)| (f.to_string(), *c)).collect();
         assert_eq!(found, expected);
+    }
+}
+
+/// The tours `run_ga` and `run_sa` return, held against definitions rather
+/// than against the runners' own bookkeeping: a permutation of the nodes, its
+/// closed length recomputed from the coordinates, and the optimum found by
+/// trying every tour.
+#[cfg(test)]
+mod solver_oracle_tests {
+    use super::*;
+
+    /// Points on a pseudo-random plane, the same on every run.
+    fn points(n: usize, scale: f64, seed: u64) -> Vec<[f64; 2]> {
+        let mut state = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        let mut next = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state >> 11) as f64 / (1u64 << 53) as f64
+        };
+        (0..n).map(|_| [next() * scale, next() * scale]).collect()
+    }
+
+    /// The shortest closed tour by trying every order of the nodes after the
+    /// first (a tour is a cycle, so the start does not matter).
+    fn optimum(nodes: &[[f64; 2]]) -> f64 {
+        fn go(nodes: &[[f64; 2]], tour: &mut Vec<usize>, left: &mut Vec<usize>, best: &mut f64) {
+            if left.is_empty() {
+                *best = best.min(tour_distance(tour, nodes));
+                return;
+            }
+            for i in 0..left.len() {
+                let v = left.remove(i);
+                tour.push(v);
+                go(nodes, tour, left, best);
+                tour.pop();
+                left.insert(i, v);
+            }
+        }
+        let mut best = f64::INFINITY;
+        go(
+            nodes,
+            &mut vec![0],
+            &mut (1..nodes.len()).collect(),
+            &mut best,
+        );
+        best
+    }
+
+    fn ga(nodes: &[[f64; 2]], seed: u64) -> GaResult {
+        solve_ga(serde_json::from_value(json!({ "nodes": nodes, "seed": seed })).expect("request"))
+            .expect("ga")
+    }
+
+    fn sa(nodes: &[[f64; 2]], seed: u64) -> SaResult {
+        solve_sa(serde_json::from_value(json!({ "nodes": nodes, "seed": seed })).expect("request"))
+            .expect("sa")
+    }
+
+    fn assert_tour(nodes: &[[f64; 2]], tour: &[usize], reported: f64) {
+        let mut seen = tour.to_vec();
+        seen.sort_unstable();
+        assert_eq!(
+            seen,
+            (0..nodes.len()).collect::<Vec<_>>(),
+            "not a permutation"
+        );
+        let length: f64 = (0..tour.len())
+            .map(|i| {
+                let (a, b) = (nodes[tour[i]], nodes[tour[(i + 1) % tour.len()]]);
+                ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2)).sqrt()
+            })
+            .sum();
+        assert!(
+            (length - reported).abs() <= 1e-9 * length.max(1.0),
+            "{length} vs {reported}"
+        );
+    }
+
+    /// Small instances have a known optimum (every tour tried), and both
+    /// solvers find it: the answer is a permutation of the nodes whose length,
+    /// recomputed from the coordinates, is the one reported.
+    #[test]
+    fn small_instances_are_solved_to_the_optimum() {
+        for (n, scale) in [(6, 1.0), (7, 1e-3), (8, 1e3), (8, 1e6)] {
+            for seed in 0..4u64 {
+                let nodes = points(n, scale, seed);
+                let best = optimum(&nodes);
+                let (g, s) = (ga(&nodes, seed), sa(&nodes, seed));
+                assert_tour(&nodes, &g.best_tour, g.best_distance);
+                assert_tour(&nodes, &s.best_tour, s.best_distance);
+                for (name, found) in [("ga", g.best_distance), ("sa", s.best_distance)] {
+                    assert!(
+                        found >= best * (1.0 - 1e-12),
+                        "{name} beat the optimum: {found} < {best}"
+                    );
+                    assert!(
+                        found <= best * (1.0 + 1e-9),
+                        "{name} n {n} scale {scale} seed {seed}: {found} vs optimum {best}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// The same cities in other coordinates are the same problem, so the
+    /// default annealing must not do better or worse for the unit of the
+    /// coordinates (a start fixed in the unit of the tour length is a random
+    /// walk for small coordinates and a descent for large ones).
+    #[test]
+    fn default_annealing_does_not_depend_on_the_unit_of_the_coordinates() {
+        let mean = |scale: f64| -> f64 {
+            (0..8u64)
+                .map(|seed| {
+                    let nodes: Vec<[f64; 2]> = points(40, 1.0, seed)
+                        .iter()
+                        .map(|p| [p[0] * scale, p[1] * scale])
+                        .collect();
+                    let r = sa(&nodes, seed);
+                    assert_tour(&nodes, &r.best_tour, r.best_distance);
+                    r.best_distance / scale
+                })
+                .sum::<f64>()
+                / 8.0
+        };
+        let unit = mean(1.0);
+        for scale in [1e-4, 1e-2, 1e2, 1e4, 1e6] {
+            let m = mean(scale);
+            assert!(
+                (m - unit).abs() <= 0.04 * unit,
+                "scale {scale:e}: mean tour {m} vs {unit} at unit scale"
+            );
+        }
+    }
+
+    /// An absolute `initial_temp` is still taken as given: the run is the
+    /// crate runner's with `with_initial_temperature`.
+    #[test]
+    fn an_explicit_initial_temp_is_an_absolute_temperature() {
+        let nodes = points(12, 1.0, 3);
+        for t in [1e-3, 0.5, 40.0] {
+            let wire = solve_sa(
+                serde_json::from_value(
+                    json!({ "nodes": nodes, "seed": 1, "initial_temp": t, "iterations": 800 }),
+                )
+                .expect("request"),
+            )
+            .expect("sa");
+            let direct = crate::sa::SaRunner::run(
+                &Tsp {
+                    nodes: nodes.clone(),
+                },
+                &crate::sa::SaConfig::default()
+                    .with_initial_temperature(t)
+                    .with_min_temperature(f64::MIN_POSITIVE.min(t / 2.0))
+                    .with_cooling(crate::sa::CoolingSchedule::Geometric { alpha: 0.995 })
+                    .with_iterations_per_temperature(1)
+                    .with_max_iterations(800)
+                    .with_seed(1),
+            )
+            .expect("run");
+            assert_eq!(wire.best_tour, direct.best, "initial_temp {t}");
+        }
     }
 }
