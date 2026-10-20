@@ -8,6 +8,10 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-10-20
+
+Depends on u-numflow 0.14.
+
 ### Changed
 
 - WebAssembly `run_sa`: with no `initial_temp` the start is calibrated to the tour
