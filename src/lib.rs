@@ -26,6 +26,14 @@
 //! domain-specific concepts — scheduling, nesting, routing, etc. are
 //! all defined by consumers at higher layers.
 
+/// This crate's version, as published (`CARGO_PKG_VERSION`) — for a consumer
+/// that reports what it was built against without reading a lock file.
+///
+/// ```
+/// assert!(!u_metaheur::VERSION.is_empty());
+/// ```
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub mod alns;
 mod config_error;
 pub use config_error::ConfigError;
