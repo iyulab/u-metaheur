@@ -75,6 +75,14 @@ pub struct GaConfig {
     /// A typical value for production scheduling is 0.001 (0.1%).
     pub convergence_threshold: f64,
 
+    /// Whether each generation keeps its offspring's fitness values apart
+    /// from one another and from the elites' (Prins 2004's spacing rule): an
+    /// offspring that scores the same as one already in the generation is
+    /// mutated and scored again, once. Clones then cannot
+    /// fill the population, which otherwise converges onto copies of its
+    /// best and stops improving. Off by default.
+    pub distinct_fitness: bool,
+
     /// Whether to evaluate individuals in parallel using rayon.
     pub parallel: bool,
 
@@ -105,6 +113,7 @@ impl Default for GaConfig {
             mutation_rate: 0.1,
             stagnation_limit: 50,
             convergence_threshold: 0.0,
+            distinct_fitness: false,
             parallel: true,
             seed: None,
             time_limit_ms: None,
@@ -149,6 +158,13 @@ impl GaConfig {
     /// refuses anything else).
     pub fn with_mutation_rate(mut self, rate: f64) -> Self {
         self.mutation_rate = rate;
+        self
+    }
+
+    /// Keeps each generation's fitness values distinct
+    /// ([`distinct_fitness`](Self::distinct_fitness)).
+    pub fn with_distinct_fitness(mut self, distinct: bool) -> Self {
+        self.distinct_fitness = distinct;
         self
     }
 

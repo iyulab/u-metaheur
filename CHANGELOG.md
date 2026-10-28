@@ -8,6 +8,16 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Added
+
+- `ga::GaConfig::distinct_fitness` (`with_distinct_fitness`): each generation keeps its
+  offspring's fitness values apart from one another and from the elites' (Prins 2004's spacing
+  rule) -- an offspring that scores the same as one already in the generation is mutated and
+  scored again, once. Clones then cannot fill the population, which otherwise
+  converges onto copies of its best and ends at the stagnation limit. Off by default. **Breaking**
+  for code that builds `GaConfig` as a struct literal without `..GaConfig::default()`: the new
+  field must be given.
+
 ## [0.16.0] - 2026-10-28
 
 Depends on u-numflow 0.15.
