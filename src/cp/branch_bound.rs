@@ -39,8 +39,10 @@ use std::collections::HashMap;
 /// and some active schedule is optimal: shifting intervals earlier never
 /// breaks a deadline. An interval whose predecessors are not all fixed
 /// cannot start before that finish -- its unfixed predecessors end no
-/// earlier, and delays are not negative -- so the conflict set misses none. Branches are taken earliest start first, so the first
-/// leaf is the Giffler-Thompson schedule of the earliest-start rule.
+/// earlier, and delays are not negative -- so the conflict set misses none. Branches are taken earliest start first
+/// and, among equal starts, the longest chain of successors first -- the most
+/// work remaining behind it -- so the first leaf is the Giffler-Thompson
+/// schedule of that rule.
 ///
 /// Each node first narrows the window of every unfixed interval to what a
 /// schedule shorter than the best one found must keep: precedences carry
@@ -720,7 +722,7 @@ impl Search<'_> {
             .filter(|&i| p.group[i] == Some(g) && ready(i) && head[i] < finish)
             .filter(|&i| est[i] == head[i])
             .collect();
-        conflict.sort_by_key(|&i| (head[i], i));
+        conflict.sort_by_key(|&i| (head[i], std::cmp::Reverse(self.tails[i]), i));
         for i in conflict {
             self.fix(i, head[i], fixed);
         }
@@ -793,8 +795,8 @@ mod tests {
         assert_eq!(solution.objective_value, Some(55.0));
         assert_eq!(solution.max_end(), 55);
         assert!(model.check(&solution).is_empty());
-        // 213 nodes when written (663 before edge finding): the bound and the
-        // propagation keep the proof small.
+        // 140 nodes when written (663 before edge finding and the tie-break):
+        // the bound and the propagation keep the proof small.
         assert!(solution.num_nodes < 5_000, "{} nodes", solution.num_nodes);
     }
 

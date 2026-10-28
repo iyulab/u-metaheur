@@ -15,11 +15,13 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   and edge finding on each resource (Vilím's Θ-Λ-tree, O(k log k)) orders an
   interval after a set it cannot precede and before a set it cannot follow.
   A node whose window empties is pruned, and an interval that must start later
-  than it could start now is not branched on. Fisher & Thompson's ft06 is
-  proved in 213 nodes instead of 663; within 10 s, Lawrence's la08 and la17 are
-  now proved optimal and the mean gap to the best known makespans over 20
-  JSPLIB instances drops from 3.9 % to 1.6 %. Results that were proved optimal
-  are unchanged; schedules cut off by the time limit can differ.
+  than it could start now is not branched on. Among intervals that can start
+  at the same time, the one with the longest chain of successors is branched
+  on first, so the first schedule found is a better one. Fisher & Thompson's
+  ft06 is proved in 140 nodes instead of 663; within 10 s, Lawrence's la08 and
+  la17 are now proved optimal and the mean gap to the best known makespans
+  over 20 JSPLIB instances drops from 3.9 % to 1.2 %. Results that were proved
+  optimal are unchanged; schedules cut off by the time limit can differ.
 
 ## [0.15.0] - 2026-10-28
 
