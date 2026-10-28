@@ -19,7 +19,7 @@ u-metaheur provides generic implementations of common metaheuristic algorithms. 
 | `brkga` | BRKGA | Biased Random-Key GA — user implements only a decoder; all evolutionary mechanics are handled generically |
 | `sa` | Simulated Annealing | Single-solution trajectory optimization with pluggable cooling schedules |
 | `alns` | ALNS | Adaptive Large Neighborhood Search — destroy/repair operators with adaptive weight selection |
-| `cp` | Constraint Programming | Domain-agnostic modeling layer for constrained optimization with interval, integer, and boolean variables; an exact branch-and-bound solver for disjunctive scheduling models (job shop with release dates, deadlines and time lags) |
+| `cp` | Constraint Programming | Domain-agnostic modeling layer for constrained optimization with interval, integer, and boolean variables; an exact branch-and-bound solver for disjunctive scheduling models -- the job shop, flexible (an operation performed as one of its alternatives) or not, with release dates, deadlines and time lags -- propagating with edge finding |
 | `dispatching` | Dispatching | Generic priority rule composition engine for multi-rule item ranking |
 
 ## Key Traits
