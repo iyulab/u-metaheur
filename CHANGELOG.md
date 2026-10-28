@@ -8,6 +8,10 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-10-29
+
+Depends on u-numflow 0.16.
+
 ### Changed
 
 - **Breaking**: `ga::GaProblem::initial_individuals` takes the run's `Deadline`

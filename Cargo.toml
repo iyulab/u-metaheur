@@ -1,6 +1,6 @@
 [package]
 name = "u-metaheur"
-version = "0.17.0"
+version = "0.18.0"
 rust-version = "1.87"
 edition = "2021"
 authors = ["iyulab"]
@@ -31,7 +31,7 @@ parallel = ["dep:rayon"]
 wasm = ["dep:wasm-bindgen", "dep:js-sys", "dep:serde-wasm-bindgen", "dep:serde_json", "dep:serde", "dep:tsify", "dep:serde_path_to_error"]
 
 [dependencies]
-u-numflow = "0.15"
+u-numflow = "0.16"
 rand = "0.10"
 # Wall-clock time for `time_limit_ms` that also reads in WebAssembly
 # (`performance.now()`), where `std::time::Instant` panics.
