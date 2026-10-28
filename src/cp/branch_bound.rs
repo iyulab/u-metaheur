@@ -42,12 +42,20 @@ use std::collections::HashMap;
 /// earlier, and delays are not negative -- so the conflict set misses none. Branches are taken earliest start first, so the first
 /// leaf is the Giffler-Thompson schedule of the earliest-start rule.
 ///
-/// A node is pruned when an interval can no longer meet its deadline, or
-/// when its lower bound reaches the best makespan found: the larger of each
-/// unfixed interval's earliest start + duration + the longest chain of
-/// successors after it, and, on each resource, the bound of Jackson's
-/// preemptive schedule of its unfixed intervals (Carlier 1982) -- their
-/// earliest starts as release dates, those chains as tails.
+/// Each node first narrows the window of every unfixed interval to what a
+/// schedule shorter than the best one found must keep: precedences carry
+/// earliest starts forward and latest ends back, and on each resource edge
+/// finding (Vilím's Θ-Λ-tree) moves an interval after a set it cannot precede
+/// and, mirrored, before a set it cannot follow, until nothing moves. An
+/// interval that must start later than it could start now is not branched on.
+///
+/// A node is pruned when a window empties -- no shorter schedule, or an
+/// interval can no longer meet its deadline -- or when its lower bound reaches
+/// the best makespan found: the larger of each unfixed interval's earliest
+/// start + duration + the longest chain of successors after it, and, on each
+/// resource, the bound of Jackson's preemptive schedule of its unfixed
+/// intervals (Carlier 1982) -- those earliest starts as release dates, those
+/// chains as tails.
 ///
 /// # Status
 ///
@@ -73,7 +81,8 @@ use std::collections::HashMap;
 /// # Complexity
 ///
 /// Exponential in the worst case (the job shop is strongly NP-hard); each
-/// node costs O(n + m) for n intervals and m precedence arcs.
+/// round of a node's propagation costs O(n log n + m) for n intervals and m
+/// precedence arcs.
 ///
 /// # References
 ///
@@ -86,6 +95,8 @@ use std::collections::HashMap;
 ///   Journal of Operational Research*, 11(1), 42–47.
 /// - Carlier, J. & Pinson, E. (1989). "An algorithm for solving the job-shop
 ///   problem". *Management Science*, 35(2), 164–176.
+/// - Vilím, P. (2008). "Filtering algorithms for the unary resource
+///   constraint". *Archives of Control Sciences*, 18(2), 159–202.
 ///
 /// # Examples
 ///
@@ -375,6 +386,146 @@ fn jackson_preemptive(mut tasks: Vec<(i64, i64, i64)>) -> i64 {
     bound
 }
 
+/// A node of the Θ-Λ-tree: the tasks of its subtree split into Θ (white)
+/// and Λ (gray), sorted by earliest start at the leaves.
+#[derive(Clone, Copy)]
+struct ThetaLambda {
+    /// Total duration of the white tasks.
+    work: i64,
+    /// Earliest completion of the white tasks.
+    ect: i64,
+    /// Largest total duration with at most one gray task added.
+    work_gray: i64,
+    /// Largest earliest completion with at most one gray task added.
+    ect_gray: i64,
+    /// The gray task behind `work_gray`, if one is.
+    work_gray_task: Option<usize>,
+    /// The gray task behind `ect_gray`, if one is.
+    ect_gray_task: Option<usize>,
+}
+
+impl ThetaLambda {
+    /// Below any earliest completion; sums of durations stay far from overflow.
+    const NONE: i64 = i64::MIN / 4;
+    const EMPTY: Self = Self {
+        work: 0,
+        ect: Self::NONE,
+        work_gray: 0,
+        ect_gray: Self::NONE,
+        work_gray_task: None,
+        ect_gray_task: None,
+    };
+
+    fn white(est: i64, duration: i64) -> Self {
+        Self {
+            work: duration,
+            ect: est + duration,
+            work_gray: duration,
+            ect_gray: est + duration,
+            work_gray_task: None,
+            ect_gray_task: None,
+        }
+    }
+
+    fn gray(task: usize, est: i64, duration: i64) -> Self {
+        Self {
+            work_gray: duration,
+            ect_gray: est + duration,
+            work_gray_task: Some(task),
+            ect_gray_task: Some(task),
+            ..Self::EMPTY
+        }
+    }
+
+    fn join(l: Self, r: Self) -> Self {
+        // Of equal values, the one a gray task is behind.
+        fn pick(a: (i64, Option<usize>), b: (i64, Option<usize>)) -> (i64, Option<usize>) {
+            if a.0 > b.0 || (a.0 == b.0 && a.1.is_some()) {
+                a
+            } else {
+                b
+            }
+        }
+        let (work_gray, work_gray_task) = pick(
+            (l.work_gray + r.work, l.work_gray_task),
+            (l.work + r.work_gray, r.work_gray_task),
+        );
+        let (ect_gray, ect_gray_task) = pick(
+            pick(
+                (r.ect_gray, r.ect_gray_task),
+                (l.ect + r.work_gray, r.work_gray_task),
+            ),
+            (l.ect_gray + r.work, l.ect_gray_task),
+        );
+        Self {
+            work: l.work + r.work,
+            ect: r.ect.max(l.ect + r.work),
+            work_gray,
+            ect_gray,
+            work_gray_task,
+            ect_gray_task,
+        }
+    }
+}
+
+/// Edge finding on one unary resource, by the Θ-Λ-tree of Vilím (2008):
+/// when a task cannot end before a set of others -- their earliest start,
+/// with it, plus their total duration overruns their latest end -- it starts
+/// after the set's earliest completion. `tasks` are `(earliest start, latest
+/// end, duration)`; the result is each task's raised earliest start, or
+/// `None` when no order of the tasks meets every latest end. O(k log k).
+fn edge_finding(tasks: &[(i64, i64, i64)]) -> Option<Vec<i64>> {
+    let k = tasks.len();
+    let mut by_est: Vec<usize> = (0..k).collect();
+    by_est.sort_unstable_by_key(|&t| tasks[t].0);
+    let mut leaf = vec![0; k];
+    let size = k.next_power_of_two();
+    let mut tree = vec![ThetaLambda::EMPTY; 2 * size];
+    for (rank, &t) in by_est.iter().enumerate() {
+        leaf[t] = size + rank;
+        tree[size + rank] = ThetaLambda::white(tasks[t].0, tasks[t].2);
+    }
+    for node in (1..size).rev() {
+        tree[node] = ThetaLambda::join(tree[2 * node], tree[2 * node + 1]);
+    }
+    let set = |tree: &mut Vec<ThetaLambda>, at: usize, value: ThetaLambda| {
+        tree[at] = value;
+        let mut node = at / 2;
+        while node >= 1 {
+            tree[node] = ThetaLambda::join(tree[2 * node], tree[2 * node + 1]);
+            node /= 2;
+        }
+    };
+
+    let mut by_lct: Vec<usize> = (0..k).collect();
+    by_lct.sort_unstable_by_key(|&t| std::cmp::Reverse(tasks[t].1));
+    let mut est: Vec<i64> = tasks.iter().map(|t| t.0).collect();
+    for (n, &j) in by_lct.iter().enumerate() {
+        // The white tasks are those with latest end up to j's: they overrun it.
+        if tree[1].ect > tasks[j].1 {
+            return None;
+        }
+        let Some(&next) = by_lct.get(n + 1) else {
+            break;
+        };
+        set(
+            &mut tree,
+            leaf[j],
+            ThetaLambda::gray(j, tasks[j].0, tasks[j].2),
+        );
+        // A gray task that cannot join the white ones and still meet the
+        // largest latest end among them ends after all of them.
+        while tree[1].ect_gray > tasks[next].1 {
+            let Some(i) = tree[1].ect_gray_task else {
+                break;
+            };
+            est[i] = est[i].max(tree[1].ect);
+            set(&mut tree, leaf[i], ThetaLambda::EMPTY);
+        }
+    }
+    Some(est)
+}
+
 struct Search<'p> {
     problem: &'p Problem,
     order: Vec<usize>,
@@ -416,6 +567,74 @@ impl Search<'_> {
             };
         }
         Some(head)
+    }
+
+    /// Tightens the window `[earliest start, latest end]` of every interval
+    /// that a completion of this node beating the best makespan must keep,
+    /// or `None` when no such completion exists. Precedences carry earliest
+    /// starts forward and latest ends back; on each resource, edge finding
+    /// raises earliest starts and, on the mirrored problem, lowers latest
+    /// ends; repeated until nothing moves.
+    fn propagate(&self, head: &[i64]) -> Option<(Vec<i64>, Vec<i64>)> {
+        let p = self.problem;
+        let bound = if p.minimize && self.best.is_some() {
+            self.best_makespan - 1
+        } else {
+            i64::MAX / 4
+        };
+        let mut est = head.to_vec();
+        let mut lct: Vec<i64> = (0..p.len())
+            .map(|i| match self.start[i] {
+                Some(s) => s + p.duration[i],
+                None => p.latest_end[i]
+                    .min(p.latest_start[i] + p.duration[i])
+                    .min(bound),
+            })
+            .collect();
+        let mut on_group: Vec<Vec<usize>> = vec![Vec::new(); p.groups];
+        for i in 0..p.len() {
+            if let (None, Some(g)) = (self.start[i], p.group[i]) {
+                on_group[g].push(i);
+            }
+        }
+        loop {
+            for &i in &self.order {
+                if self.start[i].is_none() {
+                    for &(j, delay) in &p.preds[i] {
+                        est[i] = est[i].max(est[j] + p.duration[j] + delay);
+                    }
+                }
+            }
+            for &i in self.order.iter().rev() {
+                for &(j, delay) in &p.succs[i] {
+                    lct[i] = lct[i].min(lct[j] - p.duration[j] - delay);
+                }
+            }
+            if (0..p.len()).any(|i| est[i] + p.duration[i] > lct[i]) {
+                return None;
+            }
+            let mut moved = false;
+            for members in on_group.iter().filter(|m| m.len() > 1) {
+                let tasks: Vec<(i64, i64, i64)> = members
+                    .iter()
+                    .map(|&i| (est[i], lct[i], p.duration[i]))
+                    .collect();
+                let raised = edge_finding(&tasks)?;
+                let mirrored: Vec<(i64, i64, i64)> =
+                    tasks.iter().map(|&(e, l, d)| (-l, -e, d)).collect();
+                let lowered = edge_finding(&mirrored)?;
+                for (n, &i) in members.iter().enumerate() {
+                    if raised[n] > est[i] || -lowered[n] < lct[i] {
+                        est[i] = est[i].max(raised[n]);
+                        lct[i] = lct[i].min(-lowered[n]);
+                        moved = true;
+                    }
+                }
+            }
+            if !moved {
+                return Some((est, lct));
+            }
+        }
     }
 
     /// A lower bound on the makespan of every completion of this node.
@@ -471,7 +690,10 @@ impl Search<'_> {
         let Some(head) = self.heads() else {
             return;
         };
-        if self.best.is_some() && self.lower_bound(&head) >= self.best_makespan {
+        let Some((est, _)) = self.propagate(&head) else {
+            return;
+        };
+        if self.best.is_some() && self.lower_bound(&est) >= self.best_makespan {
             return;
         }
 
@@ -492,8 +714,11 @@ impl Search<'_> {
             .min_by_key(|&(i, c)| (c, i))
             .expect("an unfixed acyclic model has a ready interval");
         let g = p.group[first].expect("ready intervals without a resource are fixed first");
+        // Started next, an interval starts at its head; one that must start
+        // later to beat the best makespan is no branch.
         let mut conflict: Vec<usize> = (0..p.len())
             .filter(|&i| p.group[i] == Some(g) && ready(i) && head[i] < finish)
+            .filter(|&i| est[i] == head[i])
             .collect();
         conflict.sort_by_key(|&i| (head[i], i));
         for i in conflict {
@@ -568,8 +793,9 @@ mod tests {
         assert_eq!(solution.objective_value, Some(55.0));
         assert_eq!(solution.max_end(), 55);
         assert!(model.check(&solution).is_empty());
-        // 663 nodes when written: the bound keeps the proof small.
-        assert!(solution.num_nodes < 5_000);
+        // 213 nodes when written (663 before edge finding): the bound and the
+        // propagation keep the proof small.
+        assert!(solution.num_nodes < 5_000, "{} nodes", solution.num_nodes);
     }
 
     #[test]
@@ -748,6 +974,144 @@ mod tests {
             .solve(&model, &SolverConfig::default());
         assert_eq!(solution.status, SolverStatus::Optimal);
         assert!(model.check(&solution).is_empty());
+    }
+
+    #[test]
+    fn edge_finding_orders_what_cannot_come_first() {
+        // y (3) cannot fit before x (4) and keep x's latest end 4: y ends
+        // after x, so it starts at 4. x is not moved.
+        assert_eq!(edge_finding(&[(0, 4, 4), (0, 10, 3)]), Some(vec![0, 4]));
+        // z must follow both x and y, whose latest ends are 7: it starts once
+        // they are done, at 0 + 3 + 4.
+        assert_eq!(
+            edge_finding(&[(0, 7, 3), (0, 7, 4), (0, 20, 2)]),
+            Some(vec![0, 0, 7])
+        );
+        // Two tasks of 2 within [0, 3] overrun it.
+        assert_eq!(edge_finding(&[(0, 3, 2), (0, 3, 2)]), None);
+        // Nothing to infer.
+        assert_eq!(edge_finding(&[(0, 100, 5), (0, 100, 5)]), Some(vec![0, 0]));
+    }
+
+    /// The optimal makespan of a job shop by enumerating every order of the
+    /// operations on every machine.
+    fn brute_force(jobs: &[Vec<(usize, i64)>], machines: usize) -> i64 {
+        let ops: Vec<(usize, usize)> = jobs
+            .iter()
+            .enumerate()
+            .flat_map(|(j, o)| (0..o.len()).map(move |k| (j, k)))
+            .collect();
+        let on: Vec<Vec<(usize, usize)>> = (0..machines)
+            .map(|m| {
+                ops.iter()
+                    .copied()
+                    .filter(|&(j, k)| jobs[j][k].0 == m)
+                    .collect()
+            })
+            .collect();
+        fn permutations(v: &[(usize, usize)]) -> Vec<Vec<(usize, usize)>> {
+            if v.len() <= 1 {
+                return vec![v.to_vec()];
+            }
+            let mut out = Vec::new();
+            for i in 0..v.len() {
+                let mut rest = v.to_vec();
+                let x = rest.remove(i);
+                for mut p in permutations(&rest) {
+                    p.insert(0, x);
+                    out.push(p);
+                }
+            }
+            out
+        }
+        let choices: Vec<Vec<Vec<(usize, usize)>>> = on.iter().map(|o| permutations(o)).collect();
+        let mut best = i64::MAX;
+        let mut pick = vec![0; machines];
+        loop {
+            // Earliest starts by relaxation; a cycle never settles.
+            let mut start: HashMap<(usize, usize), i64> = ops.iter().map(|&o| (o, 0)).collect();
+            let mut settled = false;
+            for _ in 0..=ops.len() {
+                let mut moved = false;
+                for &(j, k) in &ops {
+                    let mut s = 0;
+                    if k > 0 {
+                        s = s.max(start[&(j, k - 1)] + jobs[j][k - 1].1);
+                    }
+                    let seq = &choices[jobs[j][k].0][pick[jobs[j][k].0]];
+                    let at = seq.iter().position(|&o| o == (j, k)).unwrap();
+                    if at > 0 {
+                        let (pj, pk) = seq[at - 1];
+                        s = s.max(start[&(pj, pk)] + jobs[pj][pk].1);
+                    }
+                    if s != start[&(j, k)] {
+                        start.insert((j, k), s);
+                        moved = true;
+                    }
+                }
+                if !moved {
+                    settled = true;
+                    break;
+                }
+            }
+            if settled {
+                let makespan = ops
+                    .iter()
+                    .map(|&(j, k)| start[&(j, k)] + jobs[j][k].1)
+                    .max()
+                    .unwrap_or(0);
+                best = best.min(makespan);
+            }
+            // Next combination of machine orders.
+            let mut m = 0;
+            while m < machines {
+                pick[m] += 1;
+                if pick[m] < choices[m].len() {
+                    break;
+                }
+                pick[m] = 0;
+                m += 1;
+            }
+            if m == machines {
+                return best;
+            }
+        }
+    }
+
+    #[test]
+    fn proves_the_brute_force_optimum_on_random_job_shops() {
+        let mut x: u64 = 7;
+        let mut next = move || {
+            x = x
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            x >> 33
+        };
+        for _ in 0..40 {
+            let (jobs_n, machines) = (3, 3 + next() as usize % 2);
+            let jobs: Vec<Vec<(usize, i64)>> = (0..jobs_n)
+                .map(|_| {
+                    let mut order: Vec<usize> = (0..machines).collect();
+                    for k in (1..machines).rev() {
+                        order.swap(k, next() as usize % (k + 1));
+                    }
+                    order
+                        .into_iter()
+                        .map(|m| (m, 1 + (next() % 9) as i64))
+                        .collect()
+                })
+                .collect();
+            let slices: Vec<&[(usize, i64)]> = jobs.iter().map(Vec::as_slice).collect();
+            let model = job_shop(&slices, 1000);
+            let solution = BranchAndBoundSolver::new().solve(&model, &SolverConfig::default());
+            assert_eq!(solution.status, SolverStatus::Optimal);
+            assert!(model.check(&solution).is_empty());
+            assert_eq!(
+                solution.objective_value,
+                Some(brute_force(&jobs, machines) as f64),
+                "{jobs:?}"
+            );
+        }
     }
 
     #[test]

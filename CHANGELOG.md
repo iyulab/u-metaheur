@@ -8,6 +8,19 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Changed
+
+- `cp::BranchAndBoundSolver` propagates at every node: precedences narrow each
+  interval's window to what a schedule shorter than the best found must keep,
+  and edge finding on each resource (Vilím's Θ-Λ-tree, O(k log k)) orders an
+  interval after a set it cannot precede and before a set it cannot follow.
+  A node whose window empties is pruned, and an interval that must start later
+  than it could start now is not branched on. Fisher & Thompson's ft06 is
+  proved in 213 nodes instead of 663; within 10 s, Lawrence's la08 and la17 are
+  now proved optimal and the mean gap to the best known makespans over 20
+  JSPLIB instances drops from 3.9 % to 1.6 %. Results that were proved optimal
+  are unchanged; schedules cut off by the time limit can differ.
+
 ## [0.15.0] - 2026-10-28
 
 Depends on u-numflow 0.15.
