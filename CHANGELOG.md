@@ -21,6 +21,10 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   length the operation's duration range excludes is never chosen. Optional
   intervals outside an alternative, and precedences on alternatives, remain
   outside the solver's class (`Unknown`).
+- `cp::SimpleCpSolver` places an interval with alternatives as the alternative
+  that would end first -- that one present with the interval's start and end,
+  the others absent. Before, it placed every alternative as present and the
+  model's check reported the solution `Unknown`.
 
 ### Changed
 

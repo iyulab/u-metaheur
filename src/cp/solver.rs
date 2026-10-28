@@ -122,17 +122,21 @@ pub trait CpSolver {
 /// Places intervals sequentially respecting no-overlap and precedence
 /// constraints. This is a trivial heuristic, not a real CP solver.
 ///
+/// An interval with alternatives is placed as the alternative that would end
+/// first; that one is present, with the interval's start and end, and the
+/// others absent.
+///
 /// The placement is then [checked](CpModel::check) against the whole model:
 /// it is reported `Feasible` only when it breaks nothing, and `Unknown`
 /// otherwise -- a start or end outside its domain, past the horizon, or a
-/// constraint the greedy pass does not place by (cumulative, same start/end,
-/// alternative) that it happens to break. The intervals are returned either
-/// way, so a caller can see what was tried.
+/// constraint the greedy pass does not place by (cumulative, same start/end)
+/// that it happens to break. The intervals are returned either way, so a
+/// caller can see what was tried.
 ///
 /// # Limitations
 ///
-/// - Places by NoOverlap and Precedence only; other constraints are checked,
-///   not satisfied
+/// - Places by NoOverlap, Precedence and Alternative only; other constraints
+///   are checked, not satisfied
 /// - Does not optimize: one greedy pass
 /// - Reads no [`SolverConfig`] setting: a single pass has no time to limit,
 ///   no workers to spread and no second solution to stop before
@@ -185,12 +189,40 @@ impl CpSolver for SimpleCpSolver {
             }
         }
 
+        // The alternatives of each interval: placed with it, not on their own.
+        let mut alternatives: HashMap<&str, &[String]> = HashMap::new();
+        for c in &model.constraints {
+            if let super::model::Constraint::Alternative {
+                main,
+                alternatives: alts,
+            } = c
+            {
+                alternatives.insert(main.as_str(), alts.as_slice());
+            }
+        }
+        let is_alternative: std::collections::HashSet<&str> = alternatives
+            .values()
+            .flat_map(|alts| alts.iter().map(String::as_str))
+            .collect();
+        // When `name` may start on its resources, at `earliest` or after.
+        let free = |name: &str, earliest: i64, placed: &HashMap<&str, i64>| {
+            overlap_groups
+                .iter()
+                .filter(|group| group.contains(&name))
+                .flat_map(|group| group.iter().filter_map(|m| placed.get(m)))
+                .fold(earliest, |at, &end| at.max(end))
+        };
+
         // Greedy placement: process in name order, respecting precedence
         let mut assignments: HashMap<String, IntervalSolution> = HashMap::new();
 
         // Simple topological-ish ordering: repeat until all placed
         let mut placed: HashMap<&str, i64> = HashMap::new(); // name -> end_time
-        let mut remaining: Vec<&String> = names.clone();
+        let mut remaining: Vec<&String> = names
+            .iter()
+            .copied()
+            .filter(|n| !is_alternative.contains(n.as_str()))
+            .collect();
 
         for _ in 0..model.intervals.len() + 1 {
             if remaining.is_empty() {
@@ -222,16 +254,45 @@ impl CpSolver for SimpleCpSolver {
                     continue;
                 }
 
-                // Check no-overlap: find latest end in same group
-                for group in &overlap_groups {
-                    if group.contains(&name.as_str()) {
-                        for &member in group {
-                            if let Some(&end) = placed.get(member) {
-                                earliest_start = earliest_start.max(end);
-                            }
+                if let Some(alts) = alternatives.get(name.as_str()) {
+                    // The alternative that ends first, ties to the first listed.
+                    let chosen = alts
+                        .iter()
+                        .map(|alt| {
+                            let v = &model.intervals[alt];
+                            let start = free(alt, earliest_start.max(v.start.min), &placed);
+                            (start + v.duration.min, start, alt)
+                        })
+                        .min_by_key(|&(end, _, _)| end);
+                    if let Some((end, start, chosen)) = chosen {
+                        for alt in alts.iter() {
+                            assignments.insert(
+                                alt.clone(),
+                                IntervalSolution {
+                                    start,
+                                    end,
+                                    duration: end - start,
+                                    is_present: alt == chosen,
+                                },
+                            );
                         }
+                        placed.insert(chosen.as_str(), end);
+                        assignments.insert(
+                            name.to_string(),
+                            IntervalSolution {
+                                start,
+                                end,
+                                duration: end - start,
+                                is_present: true,
+                            },
+                        );
+                        placed.insert(name.as_str(), end);
+                        continue;
                     }
                 }
+
+                // Check no-overlap: find latest end in same group
+                let earliest_start = free(name, earliest_start, &placed);
 
                 let duration = interval.duration.fixed.unwrap_or(interval.duration.min);
                 let start = earliest_start;
@@ -286,6 +347,34 @@ impl CpSolver for SimpleCpSolver {
 mod tests {
     use super::*;
     use crate::cp::{IntervalVar, Objective};
+
+    #[test]
+    fn an_interval_with_alternatives_takes_the_one_that_ends_first() {
+        // "a" holds M1 until 5; "b" ends sooner on M2 (at 4) than on M1 (5 + 2).
+        let mut model = CpModel::new("alternatives", 100);
+        model.add_interval(IntervalVar::new("a", 0, 100, 5, 100));
+        model.add_interval(IntervalVar::new("b", 0, 100, 2, 100).with_variable_duration(2, 4));
+        model.add_interval(IntervalVar::new("b@M1", 0, 100, 2, 100).as_optional("b@M1?"));
+        model.add_interval(IntervalVar::new("b@M2", 0, 100, 4, 100).as_optional("b@M2?"));
+        model.add_constraint(crate::cp::Constraint::Alternative {
+            main: "b".into(),
+            alternatives: vec!["b@M1".into(), "b@M2".into()],
+        });
+        model.add_no_overlap(vec!["a".into(), "b@M1".into()]);
+        model.add_no_overlap(vec!["b@M2".into()]);
+        model.add_precedence("a".into(), "c".into(), 0);
+        model.add_interval(IntervalVar::new("c", 0, 100, 1, 100));
+
+        let solution = SimpleCpSolver::new().solve(&model, &SolverConfig::default());
+        assert_eq!(solution.status, SolverStatus::Feasible);
+        assert!(solution.intervals["b@M2"].is_present);
+        assert!(!solution.intervals["b@M1"].is_present);
+        assert_eq!(
+            (solution.intervals["b"].start, solution.intervals["b"].end),
+            (0, 4)
+        );
+        assert!(model.check(&solution).is_empty());
+    }
 
     #[test]
     fn test_simple_solver_basic() {
