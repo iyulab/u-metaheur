@@ -56,6 +56,16 @@ use std::collections::HashMap;
 /// work remaining behind it -- so the first leaf is the Giffler-Thompson
 /// schedule of that rule.
 ///
+/// The search runs in rounds of limited discrepancy (Harvey & Ginsberg 1995):
+/// a round may take branches other than a node's first only so many times on
+/// the way down -- 0, then 1, 2, 4, ... -- and the next round starts when one
+/// left a branch out for that reason. A search stopped by its time limit has
+/// thereby tried schedules that differ from the first one near the root,
+/// where a plain depth-first search spends its time on the last few
+/// decisions; a round the budget did not cut is the full search, and proves
+/// what it finds. The rounds before it repeat part of its work, at most
+/// about as many times as the budget doubled.
+///
 /// Each node first narrows the window of every unfixed operation to what a
 /// schedule shorter than the best one found must keep: precedences carry
 /// earliest starts forward and latest ends back (an operation with open modes
@@ -107,6 +117,8 @@ use std::collections::HashMap;
 /// - Brucker, P., Jurisch, B. & Sievers, B. (1994). "A branch and bound
 ///   algorithm for the job-shop scheduling problem". *Discrete Applied
 ///   Mathematics*, 49, 107–127.
+/// - Harvey, W. D. & Ginsberg, M. L. (1995). "Limited discrepancy search".
+///   *Proceedings of IJCAI-95*, 607–613.
 /// - Carlier, J. (1982). "The one-machine sequencing problem". *European
 ///   Journal of Operational Research*, 11(1), 42–47.
 /// - Carlier, J. & Pinson, E. (1989). "An algorithm for solving the job-shop
@@ -196,8 +208,23 @@ impl CpSolver for BranchAndBoundSolver {
             deadline,
             cut_off: false,
             stop_after_first: config.stop_after_first || !problem.minimize,
+            discrepancies: 0,
+            limited: false,
         };
-        search.descend(0);
+        // Limited discrepancy search: the search is run again with a budget
+        // of branches off the heuristic's choice -- 0, 1, 2, 4, ... -- so a
+        // search cut off by its time limit has looked at schedules that differ
+        // from the first one near the root, not only near the leaves. A run
+        // the budget did not cut is the full search.
+        loop {
+            search.limited = false;
+            search.descend(0);
+            let done = search.cut_off || (search.stop_after_first && search.best.is_some());
+            if done || !search.limited {
+                break;
+            }
+            search.discrepancies = search.discrepancies.saturating_mul(2).max(1);
+        }
 
         let status = match (&search.best, search.cut_off) {
             (Some(_), false) if problem.minimize && !config.stop_after_first => {
@@ -706,6 +733,11 @@ struct Search<'p> {
     deadline: web_time::Instant,
     cut_off: bool,
     stop_after_first: bool,
+    /// Branches off the first one this run may still take below the current
+    /// node.
+    discrepancies: u32,
+    /// Whether this run left a branch out for want of discrepancies.
+    limited: bool,
 }
 
 impl Search<'_> {
@@ -959,14 +991,43 @@ impl Search<'_> {
         // branch.
         branches.retain(|&(i, _, h)| est[i] <= h);
         branches.sort_by_key(|&(i, m, h)| (h, std::cmp::Reverse(self.tails[i]), i, m));
-        for (i, m, h) in branches {
+        let closes_mode = self.sole_mode(first).is_none();
+        for (k, &(i, m, h)) in branches.iter().enumerate() {
+            if k > 0 && !self.take_discrepancy() {
+                return;
+            }
             self.fix(i, m, h, fixed);
+            if k > 0 {
+                self.give_back_discrepancy();
+            }
         }
-        if self.sole_mode(first).is_none() {
+        if closes_mode {
+            let off = !branches.is_empty();
+            if off && !self.take_discrepancy() {
+                return;
+            }
             self.allowed[first][first_mode] = false;
             self.descend(fixed);
             self.allowed[first][first_mode] = true;
+            if off {
+                self.give_back_discrepancy();
+            }
         }
+    }
+
+    /// Spends a discrepancy on a branch off the first, or, when none is left,
+    /// records that the budget cut the search.
+    fn take_discrepancy(&mut self) -> bool {
+        if self.discrepancies == 0 {
+            self.limited = true;
+            return false;
+        }
+        self.discrepancies -= 1;
+        true
+    }
+
+    fn give_back_discrepancy(&mut self) {
+        self.discrepancies += 1;
     }
 
     /// Starts operation `i` in mode `m` at `s`, searches below, and undoes it.

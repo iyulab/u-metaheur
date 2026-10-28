@@ -8,6 +8,18 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Changed
+
+- Behaviour change: `BranchAndBoundSolver` searches in rounds of limited discrepancy (Harvey &
+  Ginsberg 1995) — a round may leave the first branch of a node only 0, 1, 2, 4, … times on the
+  way down, and the last round, which no budget cuts, is the full search, so what runs to the end
+  is still proved optimal. A search stopped by its time limit now tries schedules that differ from
+  its first one near the root instead of only near the leaves: within 1 s the mean gap to the best
+  known makespan falls from 22.6 % to 18.3 % on Brandimarte's ten flexible job shops and from
+  10.0 % to 9.7 % on 20 JSPLIB job shops; within 10 s, on `ft06`, `ft10` and `la01`–`la20`, the
+  same 17 are proved optimal and the gap of the others falls (`ft10` 1031 → 970). A proof can
+  take up to about twice as long (`la17` 0.5 → 0.9 s).
+
 ## [0.18.0] - 2026-10-29
 
 Depends on u-numflow 0.16.
