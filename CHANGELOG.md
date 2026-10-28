@@ -10,6 +10,19 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ### Added
 
+- `cp::BranchAndBoundSolver`: an exact `CpSolver` for disjunctive scheduling
+  models -- fixed-duration intervals, `NoOverlap` groups as unary resources,
+  `Precedence` with a nonnegative delay, start/end bounds as deadlines, makespan
+  objective. Depth-first branch and bound over active schedules (Giffler &
+  Thompson) with head/tail and Jackson preemptive one-machine lower bounds; `Optimal` and
+  `Infeasible` only when the search ran to the end, `Feasible` / `Timeout`
+  when the time limit cut it off. A model outside that class is reported
+  `Unknown`, not searched. Proves Fisher & Thompson's ft06 optimum (55) in
+  under a thousand nodes. `with_incumbent(solution)` starts the search from a
+  known schedule (a heuristic's, or an earlier run's): its makespan bounds
+  the search from the first node, and it is the answer unless a shorter one
+  is found -- proved optimal when the search runs to the end.
+
 - `VERSION`: the crate's own version (`CARGO_PKG_VERSION`) as a constant at the
   crate root, so a consumer can report what it was built against without
   reading a lock file -- which names the wrong version once the crate is linked

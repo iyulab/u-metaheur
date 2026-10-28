@@ -1410,6 +1410,8 @@ mod engine_card_tests {
         let expected = [
             ("src/alns/runner.rs", "rand::random"),
             ("src/brkga/runner.rs", "rand::random"),
+            // The CP solvers' time limits; no WASM function solves a CP model.
+            ("src/cp/branch_bound.rs", "Instant::now"),
             ("src/cp/solver.rs", "Instant::now"),
             ("src/ga/runner.rs", "rand::random"),
             ("src/sa/runner.rs", "rand::random"),
