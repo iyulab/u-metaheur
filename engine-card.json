@@ -4,7 +4,7 @@
   "engine": {
     "id": "u-metaheur",
     "summary": "Metaheuristic search (genetic algorithm, simulated annealing), exposed over WebAssembly as solvers of a travelling-salesman tour through 2D points.",
-    "version": "0.15.0",
+    "version": "0.16.0",
     "license": "MIT",
     "repository": "https://github.com/iyulab/u-metaheur"
   },
@@ -12,16 +12,16 @@
     {
       "kind": "crate",
       "name": "u-metaheur",
-      "package_version": "0.15.0",
-      "engine_version": "0.15.0",
+      "package_version": "0.16.0",
+      "engine_version": "0.16.0",
       "note": "The crate is a framework: GA, BRKGA, SA, ALNS, CP, tabu and VNS runners over a problem the caller implements as a trait; the two WebAssembly operations are its runners applied to one fixed problem.",
       "error_shape": "Err(ConfigError) from a runner given settings it cannot run."
     },
     {
       "kind": "npm",
       "name": "@iyulab/u-metaheur",
-      "package_version": "0.15.0",
-      "engine_version": "0.15.0",
+      "package_version": "0.16.0",
+      "engine_version": "0.16.0",
       "wasm": true,
       "note": "Objects in and out, typed in the .d.ts (GaConfig, GaResult, SaConfig, SaResult). Bundler and Node targets; no bundler-less browser build.",
       "error_shape": "A thrown Error whose code property is the code, with the fields (parameter, index, min, max, got, ...) as its other properties."

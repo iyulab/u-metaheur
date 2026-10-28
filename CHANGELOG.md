@@ -8,6 +8,10 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-10-28
+
+Depends on u-numflow 0.15.
+
 ### Added
 
 - `cp::BranchAndBoundSolver` solves the flexible job shop: an operation may be
