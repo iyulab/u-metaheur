@@ -6,6 +6,8 @@
 
 use rand::Rng;
 
+use crate::stop::Deadline;
+
 /// Marker trait for fitness values.
 ///
 /// Fitness must support comparison and be cheaply copyable.
@@ -114,7 +116,12 @@ pub trait GaProblem: Send + Sync {
     /// Gillett-Miller tours). The runner takes at most `population_size` of
     /// these, in order, and fills the rest with
     /// [`create_individual`](Self::create_individual). The default is none.
-    fn initial_individuals(&self) -> Vec<Self::Individual> {
+    ///
+    /// `deadline` is the run's time limit, already running: seeding that
+    /// takes time (a local search on each seed, say) stops when it passes and
+    /// returns the seeds made so far -- the limit covers the whole run.
+    fn initial_individuals(&self, deadline: &Deadline) -> Vec<Self::Individual> {
+        let _ = deadline;
         Vec::new()
     }
 

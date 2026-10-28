@@ -43,7 +43,7 @@ pub mod dispatching;
 pub mod ga;
 pub mod sa;
 pub mod stop;
-pub use stop::StopReason;
+pub use stop::{Deadline, StopReason};
 mod temperature;
 pub use temperature::TemperatureScale;
 pub mod tabu;

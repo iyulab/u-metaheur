@@ -8,6 +8,16 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking**: `ga::GaProblem::initial_individuals` takes the run's `Deadline`
+  (`initial_individuals(&self, deadline: &Deadline)`). The runner's `time_limit_ms` covered the
+  first population's scoring and the generations but not the problem's seeding, so a problem
+  whose seeds cost time (a local search on each) ran past its limit by as long as the seeding
+  took. A seeding that takes time stops when `deadline.passed()` and returns the seeds made so
+  far; one that does not ignores the argument. `stop::Deadline` (also `u_metaheur::Deadline`)
+  is public: `Deadline::start(limit_ms)` and `passed()`.
+
 ## [0.17.0] - 2026-10-28
 
 Depends on u-numflow 0.15.

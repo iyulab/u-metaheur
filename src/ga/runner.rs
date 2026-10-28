@@ -107,7 +107,7 @@ impl GaRunner {
 
         // 1. Initialize population: the problem's seeds first, random
         // individuals for the rest.
-        let mut population: Vec<P::Individual> = problem.initial_individuals();
+        let mut population: Vec<P::Individual> = problem.initial_individuals(&deadline);
         population.truncate(config.population_size);
         while population.len() < config.population_size {
             population.push(problem.create_individual(&mut rng));
@@ -493,7 +493,7 @@ mod tests {
         fn create_individual<R: Rng>(&self, rng: &mut R) -> BitString {
             self.0.create_individual(rng)
         }
-        fn initial_individuals(&self) -> Vec<BitString> {
+        fn initial_individuals(&self, _: &crate::stop::Deadline) -> Vec<BitString> {
             (0..self.1)
                 .map(|_| BitString {
                     bits: vec![true; self.0.n],
@@ -906,6 +906,52 @@ mod tests {
         let elapsed = start.elapsed();
 
         assert_eq!(result.stop_reason, StopReason::TimeLimit);
+        assert!(elapsed.as_millis() < 500, "{elapsed:?}");
+    }
+
+    /// OneMax whose seeds cost 10 ms each and that seeds until the deadline.
+    struct SlowSeeding(OneMaxProblem);
+
+    impl GaProblem for SlowSeeding {
+        type Individual = BitString;
+        fn create_individual<R: Rng>(&self, rng: &mut R) -> BitString {
+            self.0.create_individual(rng)
+        }
+        fn initial_individuals(&self, deadline: &crate::stop::Deadline) -> Vec<BitString> {
+            let mut seeds = Vec::new();
+            while seeds.len() < 200 && !deadline.passed() {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+                seeds.push(BitString {
+                    bits: vec![true; self.0.n],
+                    fitness: f64::INFINITY,
+                });
+            }
+            seeds
+        }
+        fn evaluate(&self, ind: &BitString) -> f64 {
+            self.0.evaluate(ind)
+        }
+    }
+
+    /// ... and the problem's seeding: 200 seeds at 10 ms are 2 s of work
+    /// before the first generation, which the deadline handed to
+    /// `initial_individuals` cuts.
+    #[test]
+    fn test_time_limit_reaches_the_seeding() {
+        let config = GaConfig::default()
+            .with_population_size(200)
+            .with_max_generations(100)
+            .with_stagnation_limit(0)
+            .with_time_limit_ms(100)
+            .with_seed(42)
+            .with_parallel(false);
+
+        let start = std::time::Instant::now();
+        let result = GaRunner::run(&SlowSeeding(OneMaxProblem { n: 20 }), &config).unwrap();
+        let elapsed = start.elapsed();
+
+        assert_eq!(result.stop_reason, StopReason::TimeLimit);
+        assert_eq!(result.fitness_history[0], -20.0, "the seeds made are kept");
         assert!(elapsed.as_millis() < 500, "{elapsed:?}");
     }
 

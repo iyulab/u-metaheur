@@ -639,7 +639,7 @@ impl crate::ga::GaProblem for Tsp {
     }
 
     /// The nearest-neighbour tour seeds the population.
-    fn initial_individuals(&self) -> Vec<Tour> {
+    fn initial_individuals(&self, _: &crate::stop::Deadline) -> Vec<Tour> {
         vec![Tour {
             order: nearest_neighbour_tour(&self.nodes),
             length: f64::INFINITY,
