@@ -18,6 +18,16 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
   far; one that does not ignores the argument. `stop::Deadline` (also `u_metaheur::Deadline`)
   is public: `Deadline::start(limit_ms)` and `passed()`.
 
+### Fixed
+
+- `time_limit_ms` of the ALNS, BRKGA, SA, tabu and VNS runners covers the whole run, as the
+  GA's did: their clock started after the initial solution (and the ALNS / SA temperature
+  calibration, the BRKGA first population's decoding), so a costly start ran past the limit by
+  as long as it took -- 50 calibration samples of a 10 ms repair are 0.5 s, 200 decodings of
+  10 ms are 2 s. The calibration stops sampling at the limit, and BRKGA decodes the first
+  population and each generation's offspring until the limit (at least the first; an undecoded
+  chromosome ranks last).
+
 ## [0.17.0] - 2026-10-28
 
 Depends on u-numflow 0.15.

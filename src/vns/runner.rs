@@ -61,6 +61,10 @@ impl VnsRunner {
     /// }
     /// ```
     pub fn run<P: VnsProblem>(problem: &P, config: &VnsConfig) -> VnsResult<P::Solution> {
+        // The budget covers the whole run: the initial solution and any
+        // calibration count against it, as the loop does.
+        let deadline = crate::stop::Deadline::start(config.time_limit_ms);
+
         let mut rng = match config.seed {
             Some(s) => u_numflow::random::create_rng(s),
             None => u_numflow::random::create_rng(42),
@@ -81,7 +85,6 @@ impl VnsRunner {
         let mut iteration = 0;
         let mut stop_reason = crate::StopReason::IterationLimit;
 
-        let deadline = crate::stop::Deadline::start(config.time_limit_ms);
         for outer in 0..config.max_iterations {
             if deadline.passed() {
                 stop_reason = crate::StopReason::TimeLimit;

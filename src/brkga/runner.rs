@@ -63,6 +63,10 @@ impl BrkgaRunner {
     ) -> Result<BrkgaResult, ConfigError> {
         config.validate()?;
 
+        // The budget covers the whole run: the initial solution and any
+        // calibration count against it, as the loop does.
+        let deadline = crate::stop::Deadline::start(config.time_limit_ms);
+
         let mut rng = match config.seed {
             Some(seed) => create_rng(seed),
             None => create_rng(rand::random()),
@@ -89,7 +93,7 @@ impl BrkgaRunner {
             .collect();
 
         // Evaluate initial population
-        decode_population(decoder, &mut population, config.parallel);
+        decode_population(decoder, &mut population, config.parallel, &deadline);
 
         // Sort by cost (ascending)
         population.sort_by(|a, b| {
@@ -105,7 +109,6 @@ impl BrkgaRunner {
         let mut stagnation_counter = 0usize;
         let mut stop_reason = StopReason::IterationLimit;
 
-        let deadline = crate::stop::Deadline::start(config.time_limit_ms);
         // Evolutionary loop
         for _gen in 0..config.max_generations {
             if let Some(ref flag) = cancel {
@@ -158,7 +161,12 @@ impl BrkgaRunner {
             }
 
             // Decode non-elite individuals
-            decode_population(decoder, &mut next_gen[elite_count..], config.parallel);
+            decode_population(
+                decoder,
+                &mut next_gen[elite_count..],
+                config.parallel,
+                &deadline,
+            );
 
             // Sort
             next_gen.sort_by(|a, b| {
@@ -205,17 +213,40 @@ impl BrkgaRunner {
     }
 }
 
-fn decode_population<D: BrkgaDecoder>(decoder: &D, population: &mut [Chromosome], parallel: bool) {
+/// Decodes `population` in order until `deadline` passes, always at least the
+/// first batch; a chromosome left undecoded keeps an infinite cost, so it ranks
+/// last and is not taken for the best.
+fn decode_population<D: BrkgaDecoder>(
+    decoder: &D,
+    population: &mut [Chromosome],
+    parallel: bool,
+    deadline: &crate::stop::Deadline,
+) {
     #[cfg(feature = "parallel")]
-    if parallel {
-        population.par_iter_mut().for_each(|chr| {
+    let batch = if parallel {
+        (rayon::current_num_threads() * 2).max(1)
+    } else {
+        1
+    };
+    #[cfg(not(feature = "parallel"))]
+    let batch = {
+        let _ = parallel;
+        1
+    };
+    for (i, chunk) in population.chunks_mut(batch).enumerate() {
+        if i > 0 && deadline.passed() {
+            break;
+        }
+        #[cfg(feature = "parallel")]
+        if parallel {
+            chunk.par_iter_mut().for_each(|chr| {
+                chr.cost = decoder.decode(&chr.keys);
+            });
+            continue;
+        }
+        for chr in chunk.iter_mut() {
             chr.cost = decoder.decode(&chr.keys);
-        });
-        return;
-    }
-    let _ = parallel;
-    for chr in population.iter_mut() {
-        chr.cost = decoder.decode(&chr.keys);
+        }
     }
 }
 
@@ -332,6 +363,35 @@ mod tests {
             .with_time_limit_ms(0)
             .validate()
             .is_err());
+    }
+
+    /// OneMax whose decoding takes 10 ms.
+    struct SlowDecoder;
+
+    impl BrkgaDecoder for SlowDecoder {
+        fn decode(&self, keys: &[f64]) -> f64 {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            OneMaxDecoder.decode(keys)
+        }
+    }
+
+    /// The limit covers decoding the first population too: 200 chromosomes
+    /// at 10 ms are 2 s before the first generation.
+    #[test]
+    fn test_brkga_time_limit_reaches_the_first_population() {
+        let config = BrkgaConfig::new(20)
+            .with_population_size(200)
+            .with_max_generations(100)
+            .with_stagnation_limit(0)
+            .with_time_limit_ms(100)
+            .with_seed(42)
+            .with_parallel(false);
+        let start = std::time::Instant::now();
+        let result = BrkgaRunner::run(&SlowDecoder, &config).unwrap();
+        let elapsed = start.elapsed();
+        assert_eq!(result.stop_reason, StopReason::TimeLimit);
+        assert!(result.best_cost.is_finite(), "a decoded best");
+        assert!(elapsed.as_millis() < 500, "{elapsed:?}");
     }
 
     #[test]

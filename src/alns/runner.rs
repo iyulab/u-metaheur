@@ -160,6 +160,10 @@ impl AlnsRunner {
             ));
         }
 
+        // The budget covers the whole run: the initial solution and any
+        // calibration count against it, as the loop does.
+        let deadline = crate::stop::Deadline::start(config.time_limit_ms);
+
         let mut rng = match config.seed {
             Some(seed) => create_rng(seed),
             None => create_rng(rand::random()),
@@ -180,15 +184,17 @@ impl AlnsRunner {
         // candidates drawn from the initial solution, not applied, measure it.
         let scale = match config.temperature_scale {
             TemperatureScale::Absolute => 1.0,
-            TemperatureScale::Calibrated { samples } => cost_scale((0..samples).map(|_| {
-                let d_idx = roulette_select(&destroy_stats, &mut rng);
-                let r_idx = roulette_select(&repair_stats, &mut rng);
-                let degree =
-                    rng.random_range(config.min_destroy_degree..=config.max_destroy_degree);
-                let destroyed = destroy_ops[d_idx].destroy(&current, degree, &mut rng);
-                let candidate = repair_ops[r_idx].repair(&destroyed, &mut rng);
-                problem.cost(&candidate) - current_cost
-            })),
+            TemperatureScale::Calibrated { samples } => {
+                cost_scale((0..samples).take_while(|_| !deadline.passed()).map(|_| {
+                    let d_idx = roulette_select(&destroy_stats, &mut rng);
+                    let r_idx = roulette_select(&repair_stats, &mut rng);
+                    let degree =
+                        rng.random_range(config.min_destroy_degree..=config.max_destroy_degree);
+                    let destroyed = destroy_ops[d_idx].destroy(&current, degree, &mut rng);
+                    let candidate = repair_ops[r_idx].repair(&destroyed, &mut rng);
+                    problem.cost(&candidate) - current_cost
+                }))
+            }
         };
         let min_temperature = config.min_temperature * scale;
         let mut temperature = config.initial_temperature * scale;
@@ -201,7 +207,6 @@ impl AlnsRunner {
         let mut cost_history = Vec::new();
         cost_history.push(best_cost);
 
-        let deadline = crate::stop::Deadline::start(config.time_limit_ms);
         for iteration in 0..config.max_iterations {
             if let Some(ref flag) = cancel {
                 if flag.load(Ordering::Relaxed) {
@@ -596,6 +601,41 @@ mod tests {
             .with_time_limit_ms(0)
             .validate()
             .is_err());
+    }
+
+    /// `GreedyRepair` taking 10 ms a call.
+    struct SlowRepair;
+
+    impl RepairOperator<Vec<bool>> for SlowRepair {
+        fn name(&self) -> &str {
+            "slow"
+        }
+
+        fn repair<R: Rng>(&self, solution: &Vec<bool>, rng: &mut R) -> Vec<bool> {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            GreedyRepair.repair(solution, rng)
+        }
+    }
+
+    /// The limit covers the temperature calibration too: its 50 default
+    /// samples at 10 ms are 0.5 s before the first iteration.
+    #[test]
+    fn test_alns_time_limit_reaches_the_calibration() {
+        let config = AlnsConfig::default()
+            .with_max_iterations(usize::MAX)
+            .with_time_limit_ms(50)
+            .with_seed(42);
+        let start = std::time::Instant::now();
+        let result = AlnsRunner::run(
+            &SubsetProblem { n: 20 },
+            &[RandomDestroy],
+            &[SlowRepair],
+            &config,
+        )
+        .unwrap();
+        let elapsed = start.elapsed();
+        assert_eq!(result.stop_reason, StopReason::TimeLimit);
+        assert!(elapsed.as_millis() < 300, "{elapsed:?}");
     }
 
     #[test]

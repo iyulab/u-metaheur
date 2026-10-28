@@ -67,6 +67,10 @@ impl SaRunner {
     ) -> Result<SaResult<P::Solution>, ConfigError> {
         config.validate()?;
 
+        // The budget covers the whole run: the initial solution and any
+        // calibration count against it, as the loop does.
+        let deadline = crate::stop::Deadline::start(config.time_limit_ms);
+
         let mut rng = match config.seed {
             Some(seed) => create_rng(seed),
             None => create_rng(rand::random()),
@@ -83,6 +87,7 @@ impl SaRunner {
             TemperatureScale::Absolute => 1.0,
             TemperatureScale::Calibrated { samples } => cost_scale(
                 (0..samples)
+                    .take_while(|_| !deadline.passed())
                     .map(|_| problem.cost(&problem.neighbor(&current, &mut rng)) - current_cost),
             ),
         };
@@ -102,7 +107,6 @@ impl SaRunner {
         cost_history.push(best_cost);
 
         let mut step = 0usize; // temperature step counter
-        let deadline = crate::stop::Deadline::start(config.time_limit_ms);
 
         while temperature > min_temperature {
             if let Some(ref flag) = cancel {
