@@ -8,6 +8,20 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Added
+
+- `cp::BranchAndBoundSolver` solves the flexible job shop: an operation may be
+  performed as exactly one of its alternatives (`Constraint::Alternative` over
+  optional fixed-duration intervals, each on its own resource and for its own
+  duration). The search branches on (operation, alternative) pairs in Giffler
+  & Thompson's conflict set, plus one branch that closes the first pair's
+  alternative to its operation, so it still reaches every active schedule and
+  proves its result optimal when it runs to the end. The solution marks the
+  chosen alternative present and the others absent; an alternative whose
+  length the operation's duration range excludes is never chosen. Optional
+  intervals outside an alternative, and precedences on alternatives, remain
+  outside the solver's class (`Unknown`).
+
 ### Changed
 
 - `cp::BranchAndBoundSolver` propagates at every node: precedences narrow each

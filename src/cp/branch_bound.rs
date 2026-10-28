@@ -13,51 +13,65 @@ use std::collections::HashMap;
 ///
 /// # Models it solves
 ///
-/// Every interval mandatory with a fixed duration; constraints
-/// [`Constraint::NoOverlap`] (each interval in at most one group -- a
-/// unary resource) and [`Constraint::Precedence`] (with a `min_delay` of at
-/// least 0);
-/// the bounds of each interval's start and end, and the horizon, as
-/// deadlines; objective [`Objective::MinimizeMaxEnd`], or none (any feasible
-/// schedule). This is the job shop with release dates, deadlines and time
-/// lags, and any precedence graph rather than chains.
+/// Mandatory intervals -- the operations -- each with a fixed duration, or
+/// performed as exactly one of its alternatives: a
+/// [`Constraint::Alternative`] over optional fixed-duration intervals, each
+/// on its own resource and for its own duration (the operation's duration
+/// range keeps out an alternative it cannot take). Constraints
+/// [`Constraint::NoOverlap`] (each interval in at most one group -- a unary
+/// resource; an operation with alternatives is on theirs, not in a group)
+/// and [`Constraint::Precedence`] between operations (with a `min_delay` of
+/// at least 0); the bounds of each interval's start and end, and the horizon,
+/// as deadlines; objective [`Objective::MinimizeMaxEnd`], or none (any
+/// feasible schedule). This is the job shop -- flexible, when operations
+/// have alternatives -- with release dates, deadlines and time lags, and any
+/// precedence graph rather than chains.
 ///
-/// A model outside that class -- an optional or variable-length interval, an
-/// interval in two no-overlap groups, a negative delay, any other constraint
-/// or objective --
-/// is not searched: the solution is empty with [`SolverStatus::Unknown`].
-/// An invalid model is [`SolverStatus::ModelInvalid`].
+/// A model outside that class -- a variable-length interval without
+/// alternatives, an optional interval outside every alternative or in two,
+/// an interval in two no-overlap groups, a precedence on an alternative, a
+/// negative delay, any other constraint or objective -- is not searched: the
+/// solution is empty with [`SolverStatus::Unknown`]. An invalid model is
+/// [`SolverStatus::ModelInvalid`].
 ///
 /// # Algorithm
 ///
-/// A node fixes the start of some intervals. An interval with no unary
-/// resource is started as soon as its predecessors allow -- that is never
-/// worse. Otherwise, of the intervals whose predecessors are all fixed, the
-/// one that can finish first, at `c`, names a resource; the branches start,
-/// on that resource, each such interval that could start before `c`
-/// (Giffler & Thompson's conflict set). Every active schedule is reached,
-/// and some active schedule is optimal: shifting intervals earlier never
-/// breaks a deadline. An interval whose predecessors are not all fixed
-/// cannot start before that finish -- its unfixed predecessors end no
-/// earlier, and delays are not negative -- so the conflict set misses none. Branches are taken earliest start first
+/// A node fixes the start and mode -- the alternative taken, if any -- of
+/// some operations. An operation left with one mode and no unary resource is
+/// started as soon as its predecessors allow -- that is never worse.
+/// Otherwise, of the open (operation, mode) pairs whose operation's
+/// predecessors are all fixed, the one that can finish first, at `c`, names
+/// a resource; the branches start, on that resource, each such pair that
+/// could start before `c` (Giffler & Thompson's conflict set) -- and, when
+/// the first pair's operation has another open mode, one more branch closes
+/// that mode to it. Every active schedule is reached, and some active
+/// schedule is optimal: shifting operations earlier never breaks a deadline.
+/// If the first pair's operation takes that mode, the first operation on that
+/// resource starts before `c` (else it could start earlier); an operation
+/// whose predecessors are not all fixed cannot start before `c` -- its
+/// unfixed predecessors end no earlier, and delays are not negative -- so the
+/// conflict set misses none; if it does not take that mode, the last branch
+/// covers it. Branches are taken earliest start first
 /// and, among equal starts, the longest chain of successors first -- the most
 /// work remaining behind it -- so the first leaf is the Giffler-Thompson
 /// schedule of that rule.
 ///
-/// Each node first narrows the window of every unfixed interval to what a
+/// Each node first narrows the window of every unfixed operation to what a
 /// schedule shorter than the best one found must keep: precedences carry
-/// earliest starts forward and latest ends back, and on each resource edge
-/// finding (Vilím's Θ-Λ-tree) moves an interval after a set it cannot precede
-/// and, mirrored, before a set it cannot follow, until nothing moves. An
-/// interval that must start later than it could start now is not branched on.
+/// earliest starts forward and latest ends back (an operation with open modes
+/// counting its shortest), and on each resource edge finding (Vilím's
+/// Θ-Λ-tree), over the operations left with that resource only, moves an
+/// operation after a set it cannot precede and, mirrored, before a set it
+/// cannot follow, until nothing moves. A pair that must start later than it
+/// could start now is not branched on.
 ///
 /// A node is pruned when a window empties -- no shorter schedule, or an
 /// interval can no longer meet its deadline -- or when its lower bound reaches
 /// the best makespan found: the larger of each unfixed interval's earliest
-/// start + duration + the longest chain of successors after it, and, on each
-/// resource, the bound of Jackson's preemptive schedule of its unfixed
-/// intervals (Carlier 1982) -- those earliest starts as release dates, those
-/// chains as tails.
+/// start + shortest duration + the longest chain of successors after it,
+/// and, on each resource, the bound of Jackson's preemptive schedule of the
+/// unfixed operations left with it only (Carlier 1982) -- those earliest
+/// starts as release dates, those chains as tails.
 ///
 /// # Status
 ///
@@ -160,29 +174,21 @@ impl CpSolver for BranchAndBoundSolver {
 
         let deadline =
             started + std::time::Duration::from_millis(config.time_limit_ms.max(0) as u64);
-        // A given schedule that keeps the model, as starts by index.
+        // A given schedule that keeps the model, as (start, mode) by index.
         let incumbent = self
             .incumbent
             .as_ref()
             .filter(|s| model.check(s).is_empty())
-            .and_then(|s| {
-                problem
-                    .names
-                    .iter()
-                    .map(|name| s.intervals.get(name).map(|i| i.start))
-                    .collect::<Option<Vec<i64>>>()
-            });
-        let incumbent_makespan = incumbent.as_ref().map_or(i64::MAX, |starts| {
-            (0..problem.len())
-                .map(|i| starts[i] + problem.duration[i])
-                .max()
-                .unwrap_or(0)
-        });
+            .and_then(|s| problem.read(s));
+        let incumbent_makespan = incumbent
+            .as_ref()
+            .map_or(i64::MAX, |plan| problem.makespan(plan));
         let mut search = Search {
             problem: &problem,
             order,
             tails: problem.tails(),
             start: vec![None; problem.len()],
+            allowed: problem.modes.iter().map(|m| vec![true; m.len()]).collect(),
             free_at: vec![i64::MIN; problem.groups],
             best: incumbent,
             best_makespan: incumbent_makespan,
@@ -202,19 +208,8 @@ impl CpSolver for BranchAndBoundSolver {
             (None, true) => SolverStatus::Timeout,
         };
         let mut solution = CpSolution::empty(status);
-        if let Some(starts) = &search.best {
-            for (i, &s) in starts.iter().enumerate() {
-                let d = problem.duration[i];
-                solution.intervals.insert(
-                    problem.names[i].clone(),
-                    IntervalSolution {
-                        start: s,
-                        end: s + d,
-                        duration: d,
-                        is_present: true,
-                    },
-                );
-            }
+        if let Some(plan) = &search.best {
+            problem.write(plan, &mut solution);
             if problem.minimize {
                 solution.objective_value = Some(search.best_makespan as f64);
             }
@@ -225,22 +220,36 @@ impl CpSolver for BranchAndBoundSolver {
     }
 }
 
-/// A model in the solver's class, indexed: intervals by name order.
+/// One way to perform an operation: on a unary resource or none, for a
+/// duration, within a window -- and, for an operation with alternatives, the
+/// optional interval that is present when it is chosen.
+#[derive(Debug, Clone)]
+struct Mode {
+    group: Option<usize>,
+    duration: i64,
+    release: i64,
+    latest_start: i64,
+    latest_end: i64,
+    alternative: Option<String>,
+}
+
+/// A model in the solver's class, indexed: its mandatory intervals -- the
+/// operations -- by name order, each with the modes it may be performed in.
 struct Problem {
     names: Vec<String>,
-    duration: Vec<i64>,
-    release: Vec<i64>,
-    latest_start: Vec<i64>,
-    latest_end: Vec<i64>,
-    /// The unary resource of each interval.
-    group: Vec<Option<usize>>,
+    modes: Vec<Vec<Mode>>,
+    /// The alternatives of each operation that no mode can take: always absent.
+    never: Vec<Vec<String>>,
     groups: usize,
-    /// `(predecessor, min_delay)` of each interval.
+    /// `(predecessor, min_delay)` of each operation.
     preds: Vec<Vec<(usize, i64)>>,
-    /// `(successor, min_delay)` of each interval.
+    /// `(successor, min_delay)` of each operation.
     succs: Vec<Vec<(usize, i64)>>,
     minimize: bool,
 }
+
+/// The start and the chosen mode of every operation.
+type Plan = Vec<(i64, usize)>;
 
 impl Problem {
     fn from_model(model: &CpModel) -> Option<Self> {
@@ -249,7 +258,20 @@ impl Problem {
             Some(Objective::MinimizeMaxEnd) => true,
             Some(_) => return None,
         };
-        let mut names: Vec<String> = model.intervals.keys().cloned().collect();
+        let window = |name: &str, duration: i64| {
+            let v = &model.intervals[name];
+            (
+                v.start.min.max(v.end.min - duration),
+                v.start.max.min(v.end.max - duration),
+                v.end.max.min(model.horizon),
+            )
+        };
+        let mut names: Vec<String> = model
+            .intervals
+            .values()
+            .filter(|v| !v.is_optional)
+            .map(|v| v.name.clone())
+            .collect();
         names.sort();
         let index: HashMap<&str, usize> = names
             .iter()
@@ -257,30 +279,52 @@ impl Problem {
             .map(|(i, n)| (n.as_str(), i))
             .collect();
         let n = names.len();
-        let (mut duration, mut release, mut latest_start, mut latest_end) =
-            (vec![0; n], vec![0; n], vec![0; n], vec![0; n]);
-        for (i, name) in names.iter().enumerate() {
-            let v = &model.intervals[name];
-            if v.is_optional || v.duration.min != v.duration.max {
-                return None;
+
+        // The optional intervals each operation may be performed as.
+        let mut alternatives: Vec<Option<Vec<String>>> = vec![None; n];
+        let mut taken: HashMap<&str, ()> = HashMap::new();
+        for constraint in &model.constraints {
+            if let Constraint::Alternative {
+                main,
+                alternatives: alts,
+            } = constraint
+            {
+                let &i = index.get(main.as_str())?;
+                if alternatives[i].is_some() {
+                    return None;
+                }
+                for alt in alts {
+                    let v = &model.intervals[alt];
+                    if !v.is_optional
+                        || v.duration.min != v.duration.max
+                        || taken.insert(alt.as_str(), ()).is_some()
+                    {
+                        return None;
+                    }
+                }
+                alternatives[i] = Some(alts.clone());
             }
-            duration[i] = v.duration.min;
-            release[i] = v.start.min.max(v.end.min - v.duration.min);
-            latest_start[i] = v.start.max.min(v.end.max - v.duration.min);
-            latest_end[i] = v.end.max.min(model.horizon);
         }
-        let mut group = vec![None; n];
+        // An optional interval outside every alternative is not in the class.
+        if model
+            .intervals
+            .values()
+            .any(|v| v.is_optional && !taken.contains_key(v.name.as_str()))
+        {
+            return None;
+        }
+
+        // The unary resource of each interval, by name.
+        let mut group_of: HashMap<&str, usize> = HashMap::new();
         let mut groups = 0;
         let (mut preds, mut succs) = (vec![Vec::new(); n], vec![Vec::new(); n]);
         for constraint in &model.constraints {
             match constraint {
                 Constraint::NoOverlap { intervals } => {
                     for name in intervals {
-                        let i = index[name.as_str()];
-                        if group[i].is_some() {
+                        if group_of.insert(name.as_str(), groups).is_some() {
                             return None;
                         }
-                        group[i] = Some(groups);
                     }
                     groups += 1;
                 }
@@ -291,24 +335,75 @@ impl Problem {
                 } => {
                     // A negative delay lets the successor start before its
                     // predecessor ends, which the branching's completeness
-                    // does not cover.
+                    // does not cover; a precedence on an alternative is
+                    // outside the class.
                     if *min_delay < 0 {
                         return None;
                     }
-                    let (b, a) = (index[before.as_str()], index[after.as_str()]);
+                    let (&b, &a) = (index.get(before.as_str())?, index.get(after.as_str())?);
                     preds[a].push((b, *min_delay));
                     succs[b].push((a, *min_delay));
                 }
+                Constraint::Alternative { .. } => {}
                 _ => return None,
+            }
+        }
+
+        let mut modes = Vec::with_capacity(n);
+        let mut never = vec![Vec::new(); n];
+        for (i, name) in names.iter().enumerate() {
+            let v = &model.intervals[name];
+            match &alternatives[i] {
+                None => {
+                    if v.duration.min != v.duration.max {
+                        return None;
+                    }
+                    let d = v.duration.min;
+                    let (release, latest_start, latest_end) = window(name, d);
+                    modes.push(vec![Mode {
+                        group: group_of.get(name.as_str()).copied(),
+                        duration: d,
+                        release,
+                        latest_start,
+                        latest_end,
+                        alternative: None,
+                    }]);
+                }
+                Some(alts) => {
+                    // The operation's resource is its alternative's.
+                    if group_of.contains_key(name.as_str()) {
+                        return None;
+                    }
+                    // An alternative whose length the operation cannot take
+                    // is never chosen; with none left, no schedule exists.
+                    let own: Vec<Mode> = alts
+                        .iter()
+                        .filter_map(|alt| {
+                            let d = model.intervals[alt].duration.min;
+                            if d < v.duration.min || d > v.duration.max {
+                                never[i].push(alt.clone());
+                                return None;
+                            }
+                            let (r1, s1, e1) = window(name, d);
+                            let (r2, s2, e2) = window(alt, d);
+                            Some(Mode {
+                                group: group_of.get(alt.as_str()).copied(),
+                                duration: d,
+                                release: r1.max(r2),
+                                latest_start: s1.min(s2),
+                                latest_end: e1.min(e2),
+                                alternative: Some(alt.clone()),
+                            })
+                        })
+                        .collect();
+                    modes.push(own);
+                }
             }
         }
         Some(Self {
             names,
-            duration,
-            release,
-            latest_start,
-            latest_end,
-            group,
+            modes,
+            never,
             groups,
             preds,
             succs,
@@ -320,8 +415,74 @@ impl Problem {
         self.names.len()
     }
 
-    /// The intervals in an order every precedence respects (Kahn), or `None`
-    /// on a cycle.
+    /// The shortest duration among an operation's modes (0 with none).
+    fn min_duration(&self, i: usize) -> i64 {
+        self.modes[i].iter().map(|m| m.duration).min().unwrap_or(0)
+    }
+
+    fn makespan(&self, plan: &Plan) -> i64 {
+        plan.iter()
+            .enumerate()
+            .map(|(i, &(s, m))| s + self.modes[i][m].duration)
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// A solution of the model as a plan, or `None` when it lacks an
+    /// operation or the mode an operation was performed in.
+    fn read(&self, solution: &CpSolution) -> Option<Plan> {
+        let present = |name: &str| solution.intervals.get(name).filter(|s| s.is_present);
+        (0..self.len())
+            .map(|i| {
+                let start = present(&self.names[i])?.start;
+                let mode = self.modes[i].iter().position(|m| match &m.alternative {
+                    None => true,
+                    Some(alt) => present(alt).is_some(),
+                })?;
+                Some((start, mode))
+            })
+            .collect()
+    }
+
+    /// Writes a plan into a solution: every operation, its chosen
+    /// alternative present with it and the others absent.
+    fn write(&self, plan: &Plan, solution: &mut CpSolution) {
+        for (i, &(start, chosen)) in plan.iter().enumerate() {
+            let d = self.modes[i][chosen].duration;
+            let present = IntervalSolution {
+                start,
+                end: start + d,
+                duration: d,
+                is_present: true,
+            };
+            solution
+                .intervals
+                .insert(self.names[i].clone(), present.clone());
+            for (m, mode) in self.modes[i].iter().enumerate() {
+                if let Some(alt) = &mode.alternative {
+                    let solved = if m == chosen {
+                        present.clone()
+                    } else {
+                        IntervalSolution {
+                            is_present: false,
+                            ..present.clone()
+                        }
+                    };
+                    solution.intervals.insert(alt.clone(), solved);
+                }
+            }
+            for alt in &self.never[i] {
+                let absent = IntervalSolution {
+                    is_present: false,
+                    ..present.clone()
+                };
+                solution.intervals.insert(alt.clone(), absent);
+            }
+        }
+    }
+
+    /// The operations in an order every precedence respects (Kahn), or
+    /// `None` on a cycle.
     fn topological_order(&self) -> Option<Vec<usize>> {
         let mut indegree: Vec<usize> = self.preds.iter().map(Vec::len).collect();
         let mut ready: Vec<usize> = (0..self.len()).filter(|&i| indegree[i] == 0).collect();
@@ -338,7 +499,8 @@ impl Problem {
         (order.len() == self.len()).then_some(order)
     }
 
-    /// The longest chain of delays and durations after each interval ends.
+    /// The longest chain of delays and shortest durations after each
+    /// operation ends.
     fn tails(&self) -> Vec<i64> {
         let order = self
             .topological_order()
@@ -347,7 +509,7 @@ impl Problem {
         for &i in order.iter().rev() {
             tail[i] = self.succs[i]
                 .iter()
-                .map(|&(j, delay)| delay + self.duration[j] + tail[j])
+                .map(|&(j, delay)| delay + self.min_duration(j) + tail[j])
                 .max()
                 .unwrap_or(0);
         }
@@ -532,10 +694,13 @@ struct Search<'p> {
     problem: &'p Problem,
     order: Vec<usize>,
     tails: Vec<i64>,
-    start: Vec<Option<i64>>,
+    /// The start and mode of each fixed operation.
+    start: Vec<Option<(i64, usize)>>,
+    /// Which modes of each operation are still open.
+    allowed: Vec<Vec<bool>>,
     /// When each unary resource is next free.
     free_at: Vec<i64>,
-    best: Option<Vec<i64>>,
+    best: Option<Plan>,
     best_makespan: i64,
     nodes: u64,
     deadline: web_time::Instant,
@@ -544,39 +709,77 @@ struct Search<'p> {
 }
 
 impl Search<'_> {
-    /// The earliest start of every unfixed interval from the fixed ones and
-    /// the precedences (resources only through `free_at`), or `None` when an
-    /// interval can no longer meet its latest start.
+    /// The duration operation `i` takes for certain: its mode's when fixed,
+    /// else the shortest of its open modes.
+    fn duration(&self, i: usize) -> i64 {
+        let modes = &self.problem.modes[i];
+        match self.start[i] {
+            Some((_, m)) => modes[m].duration,
+            None => modes
+                .iter()
+                .zip(&self.allowed[i])
+                .filter(|(_, &open)| open)
+                .map(|(m, _)| m.duration)
+                .min()
+                .unwrap_or(0),
+        }
+    }
+
+    /// The single open mode of an unfixed operation, if it has one.
+    fn sole_mode(&self, i: usize) -> Option<usize> {
+        let mut open = (0..self.allowed[i].len()).filter(|&m| self.allowed[i][m]);
+        let m = open.next()?;
+        open.next().is_none().then_some(m)
+    }
+
+    /// The earliest start of operation `i` in mode `m` from the fixed
+    /// operations, the precedences (at `ends` of the predecessors) and the
+    /// resource, or `None` when the mode can no longer meet its window.
+    fn mode_start(&self, i: usize, m: usize, after: i64) -> Option<i64> {
+        let mode = &self.problem.modes[i][m];
+        let mut h = after.max(mode.release);
+        if let Some(g) = mode.group {
+            h = h.max(self.free_at[g]);
+        }
+        (h <= mode.latest_start && h + mode.duration <= mode.latest_end).then_some(h)
+    }
+
+    /// The earliest start of every operation from the fixed ones and the
+    /// precedences -- the least over its open modes -- or `None` when an
+    /// operation has no open mode left that meets its window.
     fn heads(&self) -> Option<Vec<i64>> {
         let p = self.problem;
         let mut head = vec![0; p.len()];
         for &i in &self.order {
             head[i] = match self.start[i] {
-                Some(s) => s,
+                Some((s, _)) => s,
                 None => {
-                    let mut h = p.release[i];
-                    if let Some(g) = p.group[i] {
-                        h = h.max(self.free_at[g]);
-                    }
-                    for &(j, delay) in &p.preds[i] {
-                        h = h.max(head[j] + p.duration[j] + delay);
-                    }
-                    if h > p.latest_start[i] || h + p.duration[i] > p.latest_end[i] {
-                        return None;
-                    }
-                    h
+                    let after = self.after_preds(i, &head);
+                    (0..p.modes[i].len())
+                        .filter(|&m| self.allowed[i][m])
+                        .filter_map(|m| self.mode_start(i, m, after))
+                        .min()?
                 }
             };
         }
         Some(head)
     }
 
-    /// Tightens the window `[earliest start, latest end]` of every interval
+    /// When the predecessors of `i` let it start, from their `head`s.
+    fn after_preds(&self, i: usize, head: &[i64]) -> i64 {
+        self.problem.preds[i]
+            .iter()
+            .map(|&(j, delay)| head[j] + self.duration(j) + delay)
+            .max()
+            .unwrap_or(i64::MIN)
+    }
+
+    /// Tightens the window `[earliest start, latest end]` of every operation
     /// that a completion of this node beating the best makespan must keep,
     /// or `None` when no such completion exists. Precedences carry earliest
     /// starts forward and latest ends back; on each resource, edge finding
-    /// raises earliest starts and, on the mirrored problem, lowers latest
-    /// ends; repeated until nothing moves.
+    /// over the operations bound to it raises earliest starts and, on the
+    /// mirrored problem, lowers latest ends; repeated until nothing moves.
     fn propagate(&self, head: &[i64]) -> Option<(Vec<i64>, Vec<i64>)> {
         let p = self.problem;
         let bound = if p.minimize && self.best.is_some() {
@@ -584,42 +787,51 @@ impl Search<'_> {
         } else {
             i64::MAX / 4
         };
+        let duration: Vec<i64> = (0..p.len()).map(|i| self.duration(i)).collect();
         let mut est = head.to_vec();
         let mut lct: Vec<i64> = (0..p.len())
             .map(|i| match self.start[i] {
-                Some(s) => s + p.duration[i],
-                None => p.latest_end[i]
-                    .min(p.latest_start[i] + p.duration[i])
+                Some((s, _)) => s + duration[i],
+                None => p.modes[i]
+                    .iter()
+                    .zip(&self.allowed[i])
+                    .filter(|(_, &open)| open)
+                    .map(|(m, _)| m.latest_end.min(m.latest_start + m.duration))
+                    .max()
+                    .unwrap_or(i64::MIN / 4)
                     .min(bound),
             })
             .collect();
+        // The unfixed operations bound to each resource.
         let mut on_group: Vec<Vec<usize>> = vec![Vec::new(); p.groups];
         for i in 0..p.len() {
-            if let (None, Some(g)) = (self.start[i], p.group[i]) {
-                on_group[g].push(i);
+            if self.start[i].is_none() {
+                if let Some(g) = self.sole_mode(i).and_then(|m| p.modes[i][m].group) {
+                    on_group[g].push(i);
+                }
             }
         }
         loop {
             for &i in &self.order {
                 if self.start[i].is_none() {
                     for &(j, delay) in &p.preds[i] {
-                        est[i] = est[i].max(est[j] + p.duration[j] + delay);
+                        est[i] = est[i].max(est[j] + duration[j] + delay);
                     }
                 }
             }
             for &i in self.order.iter().rev() {
                 for &(j, delay) in &p.succs[i] {
-                    lct[i] = lct[i].min(lct[j] - p.duration[j] - delay);
+                    lct[i] = lct[i].min(lct[j] - duration[j] - delay);
                 }
             }
-            if (0..p.len()).any(|i| est[i] + p.duration[i] > lct[i]) {
+            if (0..p.len()).any(|i| est[i] + duration[i] > lct[i]) {
                 return None;
             }
             let mut moved = false;
             for members in on_group.iter().filter(|m| m.len() > 1) {
                 let tasks: Vec<(i64, i64, i64)> = members
                     .iter()
-                    .map(|&i| (est[i], lct[i], p.duration[i]))
+                    .map(|&i| (est[i], lct[i], duration[i]))
                     .collect();
                 let raised = edge_finding(&tasks)?;
                 let mirrored: Vec<(i64, i64, i64)> =
@@ -645,16 +857,19 @@ impl Search<'_> {
         let mut bound = 0;
         let mut on_group: Vec<Vec<(i64, i64, i64)>> = vec![Vec::new(); p.groups];
         for (i, &h) in head.iter().enumerate() {
-            let end = h + p.duration[i];
+            let d = self.duration(i);
             bound = bound.max(
-                end + if self.start[i].is_some() {
-                    0
-                } else {
-                    self.tails[i]
-                },
+                h + d
+                    + if self.start[i].is_some() {
+                        0
+                    } else {
+                        self.tails[i]
+                    },
             );
-            if let (None, Some(g)) = (self.start[i], p.group[i]) {
-                on_group[g].push((h, p.duration[i], self.tails[i]));
+            if self.start[i].is_none() {
+                if let Some(g) = self.sole_mode(i).and_then(|m| p.modes[i][m].group) {
+                    on_group[g].push((h, d, self.tails[i]));
+                }
             }
         }
         for tasks in on_group {
@@ -674,18 +889,15 @@ impl Search<'_> {
         }
         let p = self.problem;
         if fixed == p.len() {
-            let starts: Vec<i64> = self
+            let plan: Plan = self
                 .start
                 .iter()
-                .map(|s| s.expect("every interval is fixed at a leaf"))
+                .map(|s| s.expect("every operation is fixed at a leaf"))
                 .collect();
-            let makespan = (0..p.len())
-                .map(|i| starts[i] + p.duration[i])
-                .max()
-                .unwrap_or(0);
+            let makespan = p.makespan(&plan);
             if makespan < self.best_makespan || self.best.is_none() {
                 self.best_makespan = makespan;
-                self.best = Some(starts);
+                self.best = Some(plan);
             }
             return;
         }
@@ -699,42 +911,71 @@ impl Search<'_> {
             return;
         }
 
+        let this = &*self;
         let ready = |i: usize| {
-            self.start[i].is_none() && p.preds[i].iter().all(|&(j, _)| self.start[j].is_some())
+            this.start[i].is_none() && p.preds[i].iter().all(|&(j, _)| this.start[j].is_some())
         };
-        // An interval with no resource starts as soon as it may.
-        if let Some(i) = (0..p.len()).find(|&i| p.group[i].is_none() && ready(i)) {
-            self.fix(i, head[i], fixed);
+        // Each open (operation, mode) of a ready operation, with its
+        // earliest start.
+        let pairs: Vec<(usize, usize, i64)> = (0..p.len())
+            .filter(|&i| ready(i))
+            .flat_map(|i| {
+                let after = this.after_preds(i, &head);
+                (0..p.modes[i].len())
+                    .filter(move |&m| this.allowed[i][m])
+                    .filter_map(move |m| this.mode_start(i, m, after).map(|h| (i, m, h)))
+            })
+            .collect();
+        // An operation with one mode and no resource starts as soon as it may.
+        if let Some(&(i, m, h)) = pairs
+            .iter()
+            .find(|&&(i, m, _)| p.modes[i][m].group.is_none() && self.sole_mode(i).is_some())
+        {
+            self.fix(i, m, h, fixed);
             return;
         }
-        // Giffler-Thompson: the ready interval that can finish first names
-        // the resource; branch on each ready interval there that could start
-        // before that finish.
-        let (first, finish) = (0..p.len())
-            .filter(|&i| ready(i))
-            .map(|i| (i, head[i] + p.duration[i]))
-            .min_by_key(|&(i, c)| (c, i))
-            .expect("an unfixed acyclic model has a ready interval");
-        let g = p.group[first].expect("ready intervals without a resource are fixed first");
-        // Started next, an interval starts at its head; one that must start
-        // later to beat the best makespan is no branch.
-        let mut conflict: Vec<usize> = (0..p.len())
-            .filter(|&i| p.group[i] == Some(g) && ready(i) && head[i] < finish)
-            .filter(|&i| est[i] == head[i])
-            .collect();
-        conflict.sort_by_key(|&i| (head[i], std::cmp::Reverse(self.tails[i]), i));
-        for i in conflict {
-            self.fix(i, head[i], fixed);
+        // Giffler-Thompson over modes: the pair that can finish first names
+        // the resource; branch on each pair there that could start before
+        // that finish -- and, when the first pair's operation has another
+        // mode, on that operation not taking this one.
+        let Some(&(first, first_mode, first_start)) = pairs
+            .iter()
+            .min_by_key(|&&(i, m, h)| (h + p.modes[i][m].duration, i, m))
+        else {
+            return;
+        };
+        let finish = first_start + p.modes[first][first_mode].duration;
+        let mut branches: Vec<(usize, usize, i64)> = match p.modes[first][first_mode].group {
+            // No resource to contend for: in that mode it starts at once.
+            None => vec![(first, first_mode, first_start)],
+            Some(g) => pairs
+                .iter()
+                .copied()
+                .filter(|&(i, m, h)| p.modes[i][m].group == Some(g) && h < finish)
+                .collect(),
+        };
+        // Started next in a mode, an operation starts at that mode's earliest
+        // start; one that must start later to beat the best makespan is no
+        // branch.
+        branches.retain(|&(i, _, h)| est[i] <= h);
+        branches.sort_by_key(|&(i, m, h)| (h, std::cmp::Reverse(self.tails[i]), i, m));
+        for (i, m, h) in branches {
+            self.fix(i, m, h, fixed);
+        }
+        if self.sole_mode(first).is_none() {
+            self.allowed[first][first_mode] = false;
+            self.descend(fixed);
+            self.allowed[first][first_mode] = true;
         }
     }
 
-    /// Starts interval `i` at `s`, searches below, and undoes it.
-    fn fix(&mut self, i: usize, s: i64, fixed: usize) {
+    /// Starts operation `i` in mode `m` at `s`, searches below, and undoes it.
+    fn fix(&mut self, i: usize, m: usize, s: i64, fixed: usize) {
         let p = self.problem;
-        self.start[i] = Some(s);
-        let saved = p.group[i].map(|g| {
+        self.start[i] = Some((s, m));
+        let saved = p.modes[i][m].group.map(|g| {
             let before = self.free_at[g];
-            self.free_at[g] = s + p.duration[i];
+            self.free_at[g] = s + p.modes[i][m].duration;
             (g, before)
         });
         self.descend(fixed + 1);
@@ -748,7 +989,7 @@ impl Search<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cp::IntervalVar;
+    use crate::cp::{DurationVar, IntervalVar};
 
     /// A job shop: each job a chain of `(machine, duration)` operations.
     fn job_shop(jobs: &[&[(usize, i64)]], horizon: i64) -> CpModel {
@@ -1114,6 +1355,179 @@ mod tests {
                 "{jobs:?}"
             );
         }
+    }
+
+    /// A flexible job shop: each operation a list of `(machine, duration)`
+    /// it may run as -- an operation with one choice is a plain interval on
+    /// that machine, one with several an `Alternative` of optional intervals.
+    fn flexible_job_shop(jobs: &[Vec<Vec<(usize, i64)>>], horizon: i64) -> CpModel {
+        let mut model = CpModel::new("flexible job shop", horizon);
+        let mut on_machine: Vec<Vec<String>> = Vec::new();
+        let mut put = |m: usize, name: String| {
+            if on_machine.len() <= m {
+                on_machine.resize(m + 1, Vec::new());
+            }
+            on_machine[m].push(name);
+        };
+        for (j, ops) in jobs.iter().enumerate() {
+            for (k, choices) in ops.iter().enumerate() {
+                let name = format!("j{j}o{k}");
+                if let [(m, d)] = choices.as_slice() {
+                    model.add_interval(IntervalVar::new(&name, 0, horizon, *d, horizon));
+                    put(*m, name.clone());
+                } else {
+                    let lo = choices.iter().map(|c| c.1).min().unwrap();
+                    let hi = choices.iter().map(|c| c.1).max().unwrap();
+                    model.add_interval(
+                        IntervalVar::new(&name, 0, horizon, lo, horizon)
+                            .with_variable_duration(lo, hi),
+                    );
+                    let alternatives: Vec<String> = choices
+                        .iter()
+                        .map(|&(m, d)| {
+                            let alt = format!("{name}@{m}");
+                            model.add_interval(
+                                IntervalVar::new(&alt, 0, horizon, d, horizon)
+                                    .as_optional(format!("{alt}?")),
+                            );
+                            put(m, alt.clone());
+                            alt
+                        })
+                        .collect();
+                    model.add_constraint(Constraint::Alternative {
+                        main: name.clone(),
+                        alternatives,
+                    });
+                }
+                if k > 0 {
+                    model.add_precedence(format!("j{j}o{}", k - 1), name, 0);
+                }
+            }
+        }
+        for names in on_machine.into_iter().filter(|n| !n.is_empty()) {
+            model.add_no_overlap(names);
+        }
+        model.set_objective(Objective::MinimizeMaxEnd);
+        model
+    }
+
+    #[test]
+    fn proves_the_best_assignment_on_random_flexible_job_shops() {
+        let mut x: u64 = 11;
+        let mut next = move || {
+            x = x
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            x >> 33
+        };
+        for _ in 0..25 {
+            let machines = 3;
+            let jobs: Vec<Vec<Vec<(usize, i64)>>> = (0..3)
+                .map(|_| {
+                    (0..3)
+                        .map(|_| {
+                            let first = next() as usize % machines;
+                            let mut choices = vec![(first, 1 + (next() % 9) as i64)];
+                            if next() % 2 == 0 {
+                                let other = (first + 1 + next() as usize % 2) % machines;
+                                choices.push((other, 1 + (next() % 9) as i64));
+                            }
+                            choices
+                        })
+                        .collect()
+                })
+                .collect();
+            let model = flexible_job_shop(&jobs, 1000);
+            let solution = BranchAndBoundSolver::new().solve(&model, &SolverConfig::default());
+            assert_eq!(solution.status, SolverStatus::Optimal, "{jobs:?}");
+            assert!(model.check(&solution).is_empty(), "{jobs:?}");
+
+            // Every assignment of machines, each a job shop solved exactly.
+            let flexible: Vec<(usize, usize)> = jobs
+                .iter()
+                .enumerate()
+                .flat_map(|(j, ops)| {
+                    ops.iter()
+                        .enumerate()
+                        .filter(|(_, c)| c.len() > 1)
+                        .map(move |(k, _)| (j, k))
+                })
+                .collect();
+            let best = (0..1u32 << flexible.len())
+                .map(|mask| {
+                    let mut fixed = jobs.clone();
+                    for (bit, &(j, k)) in flexible.iter().enumerate() {
+                        let pick = fixed[j][k][((mask >> bit) & 1) as usize];
+                        fixed[j][k] = vec![pick];
+                    }
+                    let shop = flexible_job_shop(&fixed, 1000);
+                    BranchAndBoundSolver::new()
+                        .solve(&shop, &SolverConfig::default())
+                        .objective_value
+                        .expect("a job shop has a schedule")
+                })
+                .fold(f64::INFINITY, f64::min);
+            assert_eq!(solution.objective_value, Some(best), "{jobs:?}");
+            // The chosen alternative is present, the others absent.
+            for (j, ops) in jobs.iter().enumerate() {
+                for (k, choices) in ops.iter().enumerate().filter(|(_, c)| c.len() > 1) {
+                    let present = choices
+                        .iter()
+                        .filter(|(m, _)| solution.intervals[&format!("j{j}o{k}@{m}")].is_present)
+                        .count();
+                    assert_eq!(present, 1);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn an_alternative_the_operation_cannot_take_is_never_chosen() {
+        let mut model = CpModel::new("lengths", 100);
+        model.add_interval(IntervalVar::new("op", 0, 100, 2, 100).with_variable_duration(2, 5));
+        model.add_interval(IntervalVar::new("fast", 0, 100, 1, 100).as_optional("fast?"));
+        model.add_interval(IntervalVar::new("slow", 0, 100, 4, 100).as_optional("slow?"));
+        model.add_constraint(Constraint::Alternative {
+            main: "op".into(),
+            alternatives: vec!["fast".into(), "slow".into()],
+        });
+        model.set_objective(Objective::MinimizeMaxEnd);
+        let solution = BranchAndBoundSolver::new().solve(&model, &SolverConfig::default());
+        assert_eq!(solution.status, SolverStatus::Optimal);
+        assert!(solution.intervals["slow"].is_present);
+        assert!(!solution.intervals["fast"].is_present);
+        assert_eq!(solution.objective_value, Some(4.0));
+        assert!(model.check(&solution).is_empty());
+
+        // With no length it can take, no schedule exists.
+        model.intervals.get_mut("slow").unwrap().duration = DurationVar::fixed(9);
+        let solution = BranchAndBoundSolver::new().solve(&model, &SolverConfig::default());
+        assert_eq!(solution.status, SolverStatus::Infeasible);
+    }
+
+    #[test]
+    fn a_flexible_incumbent_is_read_back() {
+        let jobs = vec![
+            vec![vec![(0, 3), (1, 5)], vec![(1, 2)]],
+            vec![vec![(0, 4)], vec![(0, 2), (1, 3)]],
+        ];
+        let model = flexible_job_shop(&jobs, 100);
+        let optimum = BranchAndBoundSolver::new().solve(&model, &SolverConfig::default());
+        let warm = BranchAndBoundSolver::new()
+            .with_incumbent(optimum.clone())
+            .solve(&model, &SolverConfig::default());
+        assert_eq!(warm.status, SolverStatus::Optimal);
+        assert_eq!(warm.objective_value, optimum.objective_value);
+        assert!(warm.num_nodes <= optimum.num_nodes);
+        assert!(model.check(&warm).is_empty());
+    }
+
+    #[test]
+    fn an_optional_interval_outside_an_alternative_is_not_searched() {
+        let mut model = CpModel::new("loose", 100);
+        model.add_interval(IntervalVar::new("a", 0, 100, 1, 100).as_optional("a?"));
+        let solution = BranchAndBoundSolver::new().solve(&model, &SolverConfig::default());
+        assert_eq!(solution.status, SolverStatus::Unknown);
     }
 
     #[test]
