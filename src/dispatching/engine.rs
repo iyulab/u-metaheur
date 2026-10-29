@@ -81,7 +81,9 @@ impl<T, C> RuleEngine<T, C> {
         self
     }
 
-    /// Sets the epsilon for floating-point comparison.
+    /// Sets the epsilon for floating-point comparison: two scores tie when
+    /// they differ by no more than `eps` times the larger of the two in
+    /// magnitude, so ties do not depend on the unit the scores are in.
     pub fn with_epsilon(mut self, eps: f64) -> Self {
         self.epsilon = eps;
         self
@@ -162,7 +164,7 @@ impl<T, C> RuleEngine<T, C> {
 
             for (va, vb) in sa.iter().zip(sb.iter()) {
                 let diff = va - vb;
-                if diff.abs() > self.epsilon {
+                if diff.abs() > self.epsilon * va.abs().max(vb.abs()) {
                     return va.partial_cmp(vb).unwrap_or(std::cmp::Ordering::Equal);
                 }
             }
@@ -370,6 +372,47 @@ mod tests {
         // Item with weight=1 should come first (within epsilon on value,
         // so weight breaks the tie)
         assert!((sorted[0].weight - 1.0).abs() < 1e-10);
+    }
+
+    /// Values tie when they are equal up to rounding, whatever the unit: the
+    /// same two items with their values in nanoseconds are as tied as in
+    /// seconds, and two that differ by a real amount in small units are not.
+    #[test]
+    fn test_ties_do_not_depend_on_the_unit() {
+        for k in [1e-15, 1e-12, 1e-6, 1.0, 1e6] {
+            let tied = vec![
+                Item {
+                    value: 1.0 * k,
+                    weight: 5.0,
+                },
+                Item {
+                    value: (1.0 + 1e-12) * k,
+                    weight: 1.0,
+                },
+            ];
+            let engine = RuleEngine::new().with_rule(ByValue).with_rule(ByWeight);
+            assert_eq!(
+                engine.sort(&tied, &EmptyContext)[0].weight,
+                1.0,
+                "tied at {k:e}"
+            );
+
+            let apart = vec![
+                Item {
+                    value: 1.1 * k,
+                    weight: 1.0,
+                },
+                Item {
+                    value: 1.0 * k,
+                    weight: 5.0,
+                },
+            ];
+            assert_eq!(
+                engine.sort(&apart, &EmptyContext)[0].weight,
+                5.0,
+                "apart at {k:e}"
+            );
+        }
     }
 
     #[test]

@@ -100,7 +100,9 @@ impl VnsRunner {
                 let candidate = problem.local_search(&shaken);
                 let candidate_cost = problem.cost(&candidate);
 
-                if candidate_cost < best_cost - 1e-12 {
+                // A gain beyond rounding, judged against the cost itself (a
+                // fixed amount would ignore every gain of a cost in small units).
+                if candidate_cost < best_cost - 1e-12 * best_cost.abs() {
                     // Improvement found — accept and reset to first neighborhood
                     current = candidate;
                     best = current.clone();
@@ -196,6 +198,51 @@ mod tests {
                 }
             }
             current
+        }
+    }
+
+    /// The same problem with its cost in another unit.
+    struct Scaled(f64);
+
+    impl VnsProblem for Scaled {
+        type Solution = i32;
+
+        fn initial_solution<R: Rng>(&self, rng: &mut R) -> i32 {
+            DiscreteQuadratic.initial_solution(rng)
+        }
+
+        fn cost(&self, x: &i32) -> f64 {
+            DiscreteQuadratic.cost(x) * self.0
+        }
+
+        fn neighborhood_count(&self) -> usize {
+            DiscreteQuadratic.neighborhood_count()
+        }
+
+        fn shake<R: Rng>(&self, x: &i32, k: usize, rng: &mut R) -> i32 {
+            DiscreteQuadratic.shake(x, k, rng)
+        }
+
+        // No descent: every gain has to come from the shaking.
+        fn local_search(&self, x: &i32) -> i32 {
+            *x
+        }
+    }
+
+    /// A gain is a gain in any unit: the run on a cost scaled by 1e-15 or 1e12
+    /// takes the same steps and ends at the same solution.
+    #[test]
+    fn test_vns_does_not_depend_on_the_unit_of_the_cost() {
+        let config = VnsConfig::default().with_max_iterations(50).with_seed(42);
+        let base = VnsRunner::run(&Scaled(1.0), &config);
+        assert!(
+            base.best_cost < 100.0,
+            "the run improves on a start of up to 3600"
+        );
+        for k in [1e-15, 1e-12, 1e-6, 1e6, 1e12] {
+            let result = VnsRunner::run(&Scaled(k), &config);
+            assert_eq!(result.best, base.best, "scale {k:e}");
+            assert_eq!(result.best_iteration, base.best_iteration, "scale {k:e}");
         }
     }
 

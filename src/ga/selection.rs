@@ -126,7 +126,13 @@ fn roulette<I: Individual, R: Rng>(population: &[I], rng: &mut R) -> usize {
     // Find max fitness for inversion
     let max_fitness = fitnesses.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
 
-    let epsilon = 1e-10;
+    // The weight the worst individual keeps, so that none is out of the wheel:
+    // a tenth of a billionth of the spread, not a fixed amount (which would
+    // outweigh every difference between fitnesses in small units and turn the
+    // wheel uniform).
+    let min_fitness = fitnesses.iter().cloned().fold(f64::INFINITY, f64::min);
+    let spread = max_fitness - min_fitness;
+    let epsilon = if spread > 0.0 { 1e-10 * spread } else { 1.0 };
 
     // Invert: lower fitness -> higher weight
     let weights: Vec<f64> = fitnesses
@@ -251,6 +257,24 @@ mod tests {
         // All should be selected roughly equally
         for &c in &counts {
             assert!(c > 1500, "expected uniform, got counts: {counts:?}");
+        }
+    }
+
+    /// The same fitnesses in another unit select the same individuals: the
+    /// weights are proportional, so a draw lands on the same one.
+    #[test]
+    fn test_roulette_does_not_depend_on_the_unit_of_the_fitness() {
+        let base = [100.0, 50.0, 1.0, 80.0, 30.0, 70.0];
+        let draw = |k: f64| -> Vec<usize> {
+            let pop = make_population(&base.map(|f| f * k));
+            let mut rng = u_numflow::random::create_rng(42);
+            (0..200)
+                .map(|_| Selection::Roulette.select(&pop, &mut rng))
+                .collect()
+        };
+        let expected = draw(1.0);
+        for k in [1e-15, 1e-12, 1e-9, 1e6, 1e12] {
+            assert_eq!(draw(k), expected, "scale {k:e}");
         }
     }
 

@@ -8,6 +8,20 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+### Fixed
+
+Costs and fitnesses in small units were treated as if nothing differed:
+
+- `VnsRunner` accepted a candidate only when it beat the best by an absolute 1e-12, so a cost
+  in the order of 1e-12 (or below) never improved: the run ended at its start. The margin is
+  now 1e-12 of the best cost.
+- `Selection::Roulette` kept every weight above an absolute 1e-10; when the fitnesses differ by
+  less than that (a fitness in small units) the wheel was uniform. The floor is now 1e-10 of
+  the spread of the fitnesses.
+- `dispatching::RuleEngine` called two scores tied when they differed by less than an absolute
+  `epsilon` (default 1e-9); it is now relative, as in `u-schedule`'s engine: `epsilon` times the
+  larger score in magnitude.
+
 ## [0.19.0] - 2026-10-29
 
 Depends on u-numflow 0.16.
