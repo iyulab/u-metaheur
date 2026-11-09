@@ -8,6 +8,8 @@ Maintained from 0.2.1 onward; earlier entries list release dates only (see git h
 
 ## [Unreleased]
 
+## [0.19.1] - 2026-11-09
+
 ### Fixed
 
 Costs and fitnesses in small units were treated as if nothing differed:
